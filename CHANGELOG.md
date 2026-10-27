@@ -4,7 +4,7 @@
 
 ## Unreleased — CI repair, report hardening, registry integrity & watchlist hygiene
 
-Seven independent fixes, each reproduced before the change and covered by tests
+Eight independent fixes, each reproduced before the change and covered by tests
 after it. Test count 4,586 → 5,064 (+478).
 
 ### Fixed — CI was red on `main`
@@ -186,6 +186,16 @@ flag, the Markdown body's added/removed/changed/error sections and its
 pipe escaping, `--ignore-keys` two-sided filtering, snapshot survival across
 invalid JSON, webhook-only-on-changes, and the CLI-without-matplotlib
 import regression.
+
+### Fixed — reportlab 5 broke the Python 3.9 matrix leg
+
+`test (3.9)` went red on every fresh CI run after reportlab 5.1.0 shipped:
+its metadata declares `Requires-Python >=3.9`, but its classifiers only list
+3.10+, so 3.9 installs the wheel and then fails at import - and ObscuraLens
+degrades PDF generation to a warning instead of failing, so the visible
+symptom was two PDF tests failing, not an install error. The dependency is
+now constrained per interpreter: `reportlab>=3.6.0,<5` on 3.9, unconstrained
+on 3.10+, in both `pyproject.toml` and the `requirements.txt` mirror.
 
 ## 6.2.0 — Quality, Benchmarks & Docs
 
