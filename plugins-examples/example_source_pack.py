@@ -33,7 +33,7 @@ PLUGIN_META = {
     'author': 'ObscuraLens contributors',
     'description': 'Two deterministic offline demo sources (ip + domain).',
     'license': 'MIT',
-    'url': 'https://github.com/AceGuru-mjh/ObscuraLens',
+    'url': 'https://github.com/Ultra-Guru/obscuralens',
     'requires_api': 2,
 }
 

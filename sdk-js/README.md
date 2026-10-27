@@ -1,7 +1,7 @@
 # obscuralens-sdk (JavaScript / TypeScript)
 
 A **dependency-free** TypeScript/JavaScript SDK for the
-[ObscuraLens](https://github.com/AceGuru-mjh/obscuralens) OSINT REST API
+[ObscuraLens](https://github.com/Ultra-Guru/obscuralens) OSINT REST API
 (v6.x). One `fetch`-based transport, the full 20-kind lookup surface, the
 analyst toolbox, analytics, notifications, automation, STIX/MISP exports and
 a fluent investigation session — zero npm dependencies, Node 18+ (or any

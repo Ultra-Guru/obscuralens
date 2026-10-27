@@ -6,7 +6,7 @@
 
 **Download the Desktop Beta (single-file Windows exe — no Python required):**
 
-[![Desktop Beta download](https://img.shields.io/badge/download-Desktop%20Beta%20exe-8f5c03?style=for-the-badge&logo=windows)](https://github.com/AceGuru-mjh/obscuralens/releases)
+[![Desktop Beta download](https://img.shields.io/badge/download-Desktop%20Beta%20exe-8f5c03?style=for-the-badge&logo=windows)](https://github.com/Ultra-Guru/obscuralens/releases)
 
 macOS and Linux binaries ship with every beta release too.
 
@@ -49,7 +49,7 @@ Multi-source OSINT console and investigation platform for **20 target kinds**: I
 
 ## What's new in v5.1 (Desktop Beta)
 
-- **Desktop Beta program**: download `ObscuraLens-<version>-win-x64.exe` from [GitHub Releases](https://github.com/AceGuru-mjh/obscuralens/releases) and run `obscuralens.exe desktop` for the desktop experience: a single-instance launcher boots the local web UI in your browser with free-port probing and graceful Ctrl+C shutdown. `obscuralens update check` polls GitHub Releases for newer betas (never auto-downloads), and `obscuralens desktop --diagnostics` prints a full system report. A nightly channel rebuilds at 03:00 UTC. Full guide: [docs/desktop-beta.md](docs/desktop-beta.md).
+- **Desktop Beta program**: download `ObscuraLens-<version>-win-x64.exe` from [GitHub Releases](https://github.com/Ultra-Guru/obscuralens/releases) and run `obscuralens.exe desktop` for the desktop experience: a single-instance launcher boots the local web UI in your browser with free-port probing and graceful Ctrl+C shutdown. `obscuralens update check` polls GitHub Releases for newer betas (never auto-downloads), and `obscuralens desktop --diagnostics` prints a full system report. A nightly channel rebuilds at 03:00 UTC. Full guide: [docs/desktop-beta.md](docs/desktop-beta.md).
 - **Release automation**: pushing a `v*-beta*` tag triggers the desktop-beta workflow — it builds and smoke-tests Windows/Linux/macOS binaries, attaches SHA-256 checksums and publishes the pre-release with download instructions. The PyInstaller spec now bundles **every** offline data pack, rule pack and report template into the exe (previously these were silently missing from the standalone build).
 - **Internationalization (14 languages)**: en, zh, ja, ko, de, fr, es, pt, ru, it, nl, pl, ar, hi — stdlib-only catalogue runtime with `{placeholder}` interpolation, plural rules, English fallback and Accept-Language matching. New `obscuralens i18n` command. See [docs/i18n.md](docs/i18n.md).
 - **Offline data catalog (10 new packs)**: IANA port registry (~2,600 entries), ISO 3166 countries, ISO 639 languages, ISO 4217 currencies, HTTP status codes, a MITRE CWE selection, the IANA root-zone TLD list (~1,400), file extensions, MIME types and a user-agent rotation pool — behind a typed, never-raising API with the new `obscuralens data` CLI. See [docs/data-packs.md](docs/data-packs.md).
@@ -133,7 +133,7 @@ Keyed sources layer on automatically when a key is configured. Zero keys require
 Requires Python 3.9+.
 
 ```powershell
-git clone https://github.com/AceGuru-mjh/obscuralens.git
+git clone https://github.com/Ultra-Guru/obscuralens.git
 cd obscuralens
 ./start.sh          # Linux/macOS: venv + deps + web UI in one command
 # or the manual route:
@@ -159,7 +159,7 @@ Optional extras: `pip install -e ".[web]"` (web UI/API), `".[tui]"` (terminal UI
 
 | Method | Command | Notes |
 |---|---|---|
-| **Desktop Beta (exe)** | download from [Releases](https://github.com/AceGuru-mjh/obscuralens/releases) → `ObscuraLens-…-win-x64.exe desktop` | single-file exe, no Python needed; local web UI in your browser; `--diagnostics`, `--check-update` flags |
+| **Desktop Beta (exe)** | download from [Releases](https://github.com/Ultra-Guru/obscuralens/releases) → `ObscuraLens-…-win-x64.exe desktop` | single-file exe, no Python needed; local web UI in your browser; `--diagnostics`, `--check-update` flags |
 | **One-command start** | `./start.sh` (Linux/macOS) · `start.ps1` (Windows) | creates `.venv`, installs deps + web extras, serves the UI and opens the browser — zero manual steps; flags `--no-open`, `--port N`; also `make start` / `just start` |
 | **Desktop mode (installed)** | `obscuralens desktop` | same launcher as the exe: single-instance lock, free-port probing, browser auto-open |
 | **Update check** | `obscuralens update check` | polls GitHub Releases for a newer beta; never auto-downloads |

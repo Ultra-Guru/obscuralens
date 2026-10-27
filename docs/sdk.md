@@ -31,7 +31,7 @@ The SDK ships inside the `obscuralens` package (Python 3.9+), so any
 install includes it:
 
 ```bash
-git clone https://github.com/AceGuru-mjh/obscuralens.git
+git clone https://github.com/Ultra-Guru/obscuralens.git
 cd obscuralens
 python -m venv venv && source venv/bin/activate    # Windows: .\venv\Scripts\Activate
 pip install -e .

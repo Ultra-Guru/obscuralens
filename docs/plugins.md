@@ -311,7 +311,7 @@ ok: yes
 meta: obscuralens-example-full 2.0.0 (api 2) by ObscuraLens contributors
       Showcase plugin: sources + commands + sections + tools + analytics.
       license: MIT
-      url: https://github.com/AceGuru-mjh/ObscuraLens
+      url: https://github.com/Ultra-Guru/obscuralens
 sources: ip: demo_full_ip_note
 commands: note (print the demo IP classification note for a target)
 report sections: notes [Plugin Notes] kinds=ip

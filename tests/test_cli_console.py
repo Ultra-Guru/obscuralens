@@ -6,6 +6,7 @@ disabled — so the whole menu forest runs with zero network and zero tty.
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1551,3 +1552,32 @@ class TestV5TrackersMenu:
         console('1', '')
         cli.v5_trackers_menu()
         assert run_recorder == []
+
+
+# ---------------------------------------------------------------------------
+# Optional visualization stack
+# ---------------------------------------------------------------------------
+
+def test_cli_imports_without_matplotlib():
+    """Regression: `import obscuralens.cli` used to require matplotlib.
+
+    A missing optional dependency must not break every non-charting command
+    (lookups, reports, automation) - and it must not break test collection.
+    """
+    code = ("import sys; sys.modules['matplotlib'] = None; "
+            "import obscuralens.cli as cli; "
+            "assert isinstance("
+            "type(cli.ObscuraLensCLI()).__dict__['chart_gen'], property)")
+    result = subprocess.run([sys.executable, '-c', code],
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr
+
+
+def test_chart_gen_is_lazy_and_survives_missing_matplotlib():
+    """The generator is created on first use; without matplotlib the three
+    interactive chart paths degrade to a warning instead of a traceback."""
+    cli = object.__new__(cli_module.ObscuraLensCLI)
+    cli._chart_gen = None
+    generator = cli.chart_gen
+    assert generator is not None
+    assert generator is cli.chart_gen  # cached, not rebuilt per access

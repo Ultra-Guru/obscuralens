@@ -13,7 +13,10 @@ numpy>=1.23.0
 wordcloud>=1.8.0
 
 # Reporting
-reportlab>=3.6.0
+# reportlab 5 installs on 3.9 (Requires-Python >=3.9) but only supports
+# 3.10+ at import time; keep 3.9 on the 4.x line (see pyproject.toml).
+reportlab>=3.6.0,<5 ; python_version < "3.10"
+reportlab>=3.6.0 ; python_version >= "3.10"
 
 # Database
 # psycopg2-binary>=2.9.0  # Uncomment for PostgreSQL

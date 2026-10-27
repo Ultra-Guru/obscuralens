@@ -301,7 +301,7 @@ def _missing_web_message(component: str, exc: Optional[BaseException] = None) ->
             'Install it with:   pip install "obscuralens[web]"',
             "or download the bundled ObscuraLens Desktop executable from the",
             "releases page, which ships the web server inside the binary:",
-            "  https://github.com/AceGuru-mjh/obscuralens/releases",
+            "  https://github.com/Ultra-Guru/obscuralens/releases",
         ]
     )
 

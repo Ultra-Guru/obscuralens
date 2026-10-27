@@ -40,7 +40,7 @@ the release notes of the version you are running.
 
 All desktop builds are published on the GitHub releases page:
 
-<https://github.com/AceGuru-mjh/obscuralens/releases>
+<https://github.com/Ultra-Guru/obscuralens/releases>
 
 Every tagged beta release carries the same asset set:
 
@@ -55,7 +55,7 @@ For the first beta, `<version>` is `5.1.0-beta.1`, so the Windows asset is
 `ObscuraLens-5.1.0-beta.1-win-x64.exe` and its download URL looks like:
 
 ```text
-https://github.com/AceGuru-mjh/obscuralens/releases/download/v5.1.0-beta.1/ObscuraLens-5.1.0-beta.1-win-x64.exe
+https://github.com/Ultra-Guru/obscuralens/releases/download/v5.1.0-beta.1/ObscuraLens-5.1.0-beta.1-win-x64.exe
 ```
 
 Asset names are produced by `obscuralens.desktop.channel.asset_name()`
@@ -322,7 +322,7 @@ is launched. The update check is informational and always exits `0`.
 |---|---|
 | `OBSCURALENS_NO_BROWSER` | any truthy value (`1`, `yes`, `on` ...) disables automatic browser opening; `0`/`false`/`no`/`off` and unset leave it enabled |
 | `OBSCURALENS_CONFIG_DIR` | directory for the desktop lock file, config, history database, cache and reports (defaults below) |
-| `OBSCURALENS_REPO_SLUG` | override the GitHub repository the updater talks to -- a bare slug, a `https://github.com/<slug>` URL or a `*.git` clone URL; useful for forks. Invalid values are ignored in favour of `AceGuru-mjh/obscuralens` |
+| `OBSCURALENS_REPO_SLUG` | override the GitHub repository the updater talks to -- a bare slug, a `https://github.com/<slug>` URL or a `*.git` clone URL; useful for forks. Invalid values are ignored in favour of `Ultra-Guru/obscuralens` |
 | `OBSCURALENS_DESKTOP_TAG` | override the display tag of this build (`v5.1.0-beta.1` style); the release workflows inject the real tag into tagged builds |
 | `OBSCURALENS_NIGHTLY` | marks the running build as a nightly (checked by the branding module alongside the channel value) |
 | `NO_COLOR` / `OBSCURALENS_NO_COLOR` | disable the launcher's ANSI colour output (the box drawing itself is pure ASCII either way) |
@@ -607,7 +607,7 @@ Python at all.
 
 Desktop beta feedback goes to the GitHub issue tracker:
 
-<https://github.com/AceGuru-mjh/obscuralens/issues>
+<https://github.com/Ultra-Guru/obscuralens/issues>
 
 Please tag desktop-beta issues with the `desktop-beta` label and include:
 

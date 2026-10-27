@@ -390,7 +390,7 @@ def _crates(app_value: Any) -> Dict[str, Any]:
 
     headers = {
         'User-Agent': 'ObscuraLens package intelligence '
-                      '(https://github.com/AceGuru-mjh/obscuralens)',
+                      '(https://github.com/Ultra-Guru/obscuralens)',
     }
     ok, data, _err = http.get_json(
         f"https://crates.io/api/v1/crates/{name}", headers=headers)
