@@ -171,7 +171,7 @@ Optional extras: `pip install -e ".[web]"` (web UI/API), `".[tui]"` (terminal UI
 | **Terminal UI (TUI)** | `pip install -e ".[tui]"` then `obscuralens tui` | Textual rich interface |
 | **MCP server (AI agents)** | `obscuralens mcp` | JSON-RPC over stdio; 63 tools |
 | **Docker** | `docker run --rm ghcr.io/aceguru-mjh/obscuralens ip 8.8.8.8` | published to GHCR on `main` |
-| **Docker Compose (web)** | `docker compose up` | serves the web UI on :8000 |
+| **Docker Compose (web)** | `docker compose up` | serves the web UI only on the host's `127.0.0.1:8000` |
 | **Standalone executable** | `pyinstaller scripts/obscuralens.spec --noconfirm` | self-contained `.exe` (console + web UI + TUI inside); CI uploads `obscuralens-windows-exe` |
 | **Scheduled monitoring** | see [docs/scheduling.md](docs/scheduling.md) | cron / Task Scheduler / GitHub Actions |
 | **Dev container** | open the folder in VS Code → *Reopen in Container* | `.devcontainer/` ships with the repo |
@@ -191,6 +191,10 @@ obscuralens serve --host 127.0.0.1 --port 8000 --open
 Want a page instead of this terminal menu? That is what `serve` is for
 (`--open` launches the browser automatically; `--no-open` never does).
 The standalone `.exe` behaves the same: `obscuralens.exe serve --open`.
+For a network-facing deployment, set a high-entropy `OBSCURALENS_WEB_TOKEN`;
+the server refuses a non-loopback bind without it. The UI and `/docs`
+support Bearer login, and SSE uses one-time tickets. See
+[API authentication](docs/api.md#authentication-and-transport-security).
 
 The dashboard is the v5.0 single-page application (see [docs/web-ui.md](docs/web-ui.md)):
 10 views, a ⌘K command palette, dark/light themes, canvas charts and a
@@ -223,7 +227,7 @@ tools: `ip_lookup`, `phone_lookup`, `username_lookup`, `email_lookup`,
 ```powershell
 docker build -t obscuralens .
 docker run --rm obscuralens ip 8.8.8.8
-docker compose up            # web UI on http://localhost:8000
+docker compose up            # web UI on http://127.0.0.1:8000 (host only)
 ```
 
 State lives in the `/data` volume. Images are published to
@@ -237,7 +241,7 @@ Interactive console (no arguments):
 python -m obscuralens
 ```
 
-Core lookups (all 14 kinds):
+Core lookups (all 20 kinds):
 
 ```powershell
 obscuralens ip 8.8.8.8 --risk             # pretty table + heuristic risk section

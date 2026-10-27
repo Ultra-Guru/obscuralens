@@ -321,6 +321,12 @@ def build_server(host: str, port: int) -> Tuple[Optional[Any], str]:
     """
     try:
         from ..web import create_app
+        from ..web.app import (
+            LOOPBACK_HOSTS,
+            _ensure_secure_bind,
+            _is_loopback_host,
+            _web_token,
+        )
     except ImportError as exc:
         return None, _missing_web_message("the ObscuraLens web app", exc)
 
@@ -330,7 +336,11 @@ def build_server(host: str, port: int) -> Tuple[Optional[Any], str]:
         return None, _missing_web_message("uvicorn", exc)
 
     try:
-        app = create_app()
+        token = _web_token()
+        _ensure_secure_bind(host, token)
+        allowed_hosts = (list(LOOPBACK_HOSTS)
+                         if not token and _is_loopback_host(host) else None)
+        app = create_app(api_token=token, allowed_hosts=allowed_hosts)
     except ImportError as exc:
         return None, _missing_web_message("FastAPI", exc)
     except Exception as exc:

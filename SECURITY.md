@@ -85,9 +85,14 @@ Be honest with yourself about what this tool does. The design position:
   service names, a configured boolean and a description — values are
   never serialised out (`obscuralens/web/app.py`, `api_keys_list`).
   Writes go through `POST/DELETE /api/keys/{service}` and land in
-  `secrets.yaml`. Note that the web UI has no authentication layer:
-  bind `serve` to localhost (the default `127.0.0.1`) unless you put
-  an authenticating proxy in front of it.
+  `secrets.yaml`. Set `OBSCURALENS_WEB_TOKEN` to require Bearer
+  authentication for every data/mutation API route (Bearer, or `X-API-Key`
+  from the shipped SDKs). The token is read from the environment, never
+  written to `secrets.yaml`, returned by the API or
+  accepted as a general URL parameter. Non-loopback binding fails closed
+  without it; `--allow-unauthenticated` is only for an authenticating
+  reverse proxy. The browser retains its token in tab-scoped session
+  storage and exchanges it for a one-time 30-second SSE ticket.
 - **History is scrubbed.** `db.save_query()` runs `sanitize_secrets()`
   over targets, error strings and result JSON so a pasted token can
   never persist in the history database
@@ -149,8 +154,15 @@ destroy it on purpose.
 ## Docker and hosted deployments
 
 The image binds nothing by default (`ENTRYPOINT obscuralens` →
-`--help`); `docker compose up` serves the web UI on :8000. If you
-expose `serve` beyond localhost, remember: the API has no built-in
-authentication, and `/api/keys` mutations are open to whoever can reach
-the port. Front it with an authenticating reverse proxy and keep
-`secrets.yaml` out of any shared volume.
+`--help`). `docker compose up` publishes the web UI only on
+`127.0.0.1:8000`; its explicit `--allow-unauthenticated` is safe only
+because of that host-level loopback publication. Do not change the port
+mapping to `8000:8000` without also configuring authentication.
+
+For a shared deployment, set a high-entropy `OBSCURALENS_WEB_TOKEN`, use
+TLS at the reverse proxy, and remove the override. `/api/keys`, settings,
+history, cases and every other sensitive route then require the bearer
+credential. Keep `secrets.yaml` out of shared volumes. Browser responses
+use CSP, anti-framing, anti-sniffing, no-referrer and no-store controls;
+unauthenticated loopback servers also enforce a local Host-header
+allowlist against DNS rebinding.

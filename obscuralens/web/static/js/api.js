@@ -26,6 +26,35 @@ export class ApiError extends Error {
 /** Default request timeout in milliseconds. */
 const DEFAULT_TIMEOUT = 90000;
 
+/**
+ * Session-scoped API credential. It is deliberately not persisted in
+ * localStorage: closing the tab drops it, and no token appears in URLs.
+ */
+const TOKEN_KEY = 'ol-web-token';
+let apiToken = '';
+try {
+  if (typeof sessionStorage !== 'undefined') {
+    apiToken = sessionStorage.getItem(TOKEN_KEY) || '';
+  }
+} catch { /* storage can be disabled in private/locked-down contexts */ }
+
+/** Replace the session credential (an empty value clears it). */
+export function setApiToken(value) {
+  apiToken = String(value ?? '').trim();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      if (apiToken) sessionStorage.setItem(TOKEN_KEY, apiToken);
+      else sessionStorage.removeItem(TOKEN_KEY);
+    }
+  } catch { /* in-memory authentication still works */ }
+}
+
+/** Remove the session credential. */
+export function clearApiToken() { setApiToken(''); }
+
+/** Whether a credential is available for an authenticated server. */
+export function hasApiToken() { return Boolean(apiToken); }
+
 /** Kinds the backend understands (mirrors obscuralens web app KINDS). */
 export const KINDS = [
   'ip', 'domain', 'email', 'username', 'phone', 'url',
@@ -67,7 +96,8 @@ export const KIND_META = {
  * Perform a JSON request against the backend.
  *
  * @param {string} path Request path beginning with '/'.
- * @param {{method?: string, body?: *, timeout?: number, form?: FormData}} opts
+ * @param {{method?: string, body?: *, timeout?: number, form?: FormData,
+ *          headers?: Object, suppressAuthEvent?: boolean}} opts
  * @returns {Promise<*>} Parsed JSON body.
  */
 export async function request(path, opts = {}) {
@@ -78,8 +108,9 @@ export async function request(path, opts = {}) {
   const init = {
     method: opts.method ?? 'GET',
     signal: controller.signal,
-    headers: {},
+    headers: { ...(opts.headers || {}) },
   };
+  if (apiToken) init.headers.Authorization = `Bearer ${apiToken}`;
   if (opts.form) {
     init.body = opts.form; // browser sets multipart boundary headers
   } else if (opts.body !== undefined) {
@@ -109,6 +140,12 @@ export async function request(path, opts = {}) {
     const message = typeof detail === 'string' && detail
       ? detail
       : `HTTP ${response.status} ${response.statusText}`;
+    if (response.status === 401 && !opts.suppressAuthEvent
+      && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('obscuralens:auth-required', {
+        detail: { message },
+      }));
+    }
     throw new ApiError(message, response.status, detail);
   }
   return data;
@@ -126,8 +163,18 @@ export function enc(value) {
 export const api = {
   /* ---- health / meta ---- */
 
-  /** Backend liveness + version. */
+  /** Backend liveness + version + whether authentication is enabled. */
   health() { return request('/api/health'); },
+
+  /** Validate the current credential without recursively opening the gate. */
+  authCheck() {
+    return request('/api/kinds', { suppressAuthEvent: true });
+  },
+
+  /** Exchange the bearer credential for a one-time EventSource ticket. */
+  streamTicket() {
+    return request('/api/stream/ticket', { method: 'POST' });
+  },
 
   /** Registry of every target kind with labels and source lists. */
   kinds() { return request('/api/kinds'); },

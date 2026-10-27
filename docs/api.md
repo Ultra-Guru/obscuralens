@@ -31,6 +31,40 @@ Conventions used by every endpoint:
   *(v5.0)* below; the v6.0 Part 2 [analytics endpoints](#analytics-endpoints-v60)
   are pure offline computation.
 
+## Authentication and transport security
+
+Loopback-only local use remains zero-configuration. To protect a shared or
+container deployment, set a long random token before starting the server:
+
+```bash
+export OBSCURALENS_WEB_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+obscuralens serve --host 0.0.0.0 --port 8000
+```
+
+Every `/api/*` route except `GET /api/health` then requires:
+
+```bash
+curl -H "Authorization: Bearer $OBSCURALENS_WEB_TOKEN" \
+  http://127.0.0.1:8000/api/kinds
+```
+
+The Python and TypeScript SDKs can instead pass the same value as
+`X-API-Key` (their existing `api_key` / `apiKey` option); both header forms
+are equivalent. Missing/invalid credentials return `401` with
+`WWW-Authenticate: Bearer`. The token is never accepted as a general query
+parameter. The SPA asks for it once and retains it only in the current
+tab's `sessionStorage`. `/docs` provides **Authorize** controls for both
+header forms when authentication is enabled.
+
+`serve` and the desktop launcher **refuse a non-loopback bind without a
+token**. `--allow-unauthenticated` is an explicit escape hatch only for a
+deployment already protected by an authenticating reverse proxy; use TLS at
+that proxy. Without a token, loopback servers also accept only local Host
+headers to mitigate DNS rebinding. API responses are `Cache-Control:
+no-store`; the SPA sends a restrictive CSP and standard anti-framing,
+anti-sniffing and no-referrer headers. Authentication does not replace TLS:
+never send the bearer token over untrusted plaintext networks.
+
 ## Service endpoints
 
 ### `GET /` — dashboard *(v5.0)*
@@ -41,7 +75,9 @@ get a pointer to `/docs` and the CLI.
 
 ### `GET /api/health`
 
-Liveness probe. Response: `{"status": "ok", "version": "5.0.0"}`.
+Public liveness probe. Response: `{"status": "ok", "version": "6.2.0",
+"authentication_required": false}`. The boolean tells the SPA whether to
+show its token gate; the response never contains the credential.
 
 ```bash
 curl http://127.0.0.1:8000/api/health
@@ -112,9 +148,8 @@ curl http://127.0.0.1:8000/api/kinds
 
 Response shape: `[{"kind": "ip", "label": "IP address",
 "description": "…", "example": "8.8.8.8",
-"sources": ["ipwhois.app", "ipwho.is", …]}, …]` — one entry per kind
-(17 live in this build: the v6.0 `vin`, `flight` and `mmsi` kinds
-included; 20 once part 1 completes).
+"sources": ["ipwhois.app", "ipwho.is", …]}, …]` — one entry for each of
+the 20 supported target kinds.
 
 ### `GET /api/history?kind=&q=&limit=`
 
@@ -794,6 +829,34 @@ curl -X POST http://127.0.0.1:8000/api/tools/batch \
 Response shape: `[{"target": "8.8.8.8", "result": {…tracker envelope
 (+ risk block)…}}, ...]` — one entry per target, failures included as
 `success: false` envelopes, never omitted.
+
+## Live event stream
+
+### `POST /api/stream/ticket`
+
+Exchange the normal bearer credential for a 30-second, single-use SSE ticket:
+
+```bash
+ticket=$(curl -s -X POST \
+  -H "Authorization: Bearer $OBSCURALENS_WEB_TOKEN" \
+  http://127.0.0.1:8000/api/stream/ticket | python -c \
+  'import json,sys; print(json.load(sys.stdin)["ticket"])')
+```
+
+### `GET /api/stream`
+
+Server-sent events for `connected`, `lookup`, `watch` and `heartbeat`.
+Non-browser clients can use the bearer header directly. Native browser
+`EventSource` cannot set headers, so it uses the ticket instead:
+
+```bash
+curl -N "http://127.0.0.1:8000/api/stream?ticket=$ticket"
+```
+
+Tickets expire, are bounded in memory, work only for `/api/stream`, and are
+consumed on first use. The long-lived token is therefore never put in the
+URL. Optional `topics=lookup,watch` filters event types. The bundled SPA
+performs this exchange and renewal automatically.
 
 ## Related
 

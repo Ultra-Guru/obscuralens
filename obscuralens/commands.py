@@ -374,6 +374,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument('--port', type=int, default=8000)
     p_serve.add_argument('--reload', action='store_true',
                          help='auto-reload on code changes (development)')
+    p_serve.add_argument(
+        '--allow-unauthenticated', action='store_true',
+        help='allow a non-loopback bind without OBSCURALENS_WEB_TOKEN '
+             '(only behind an authenticating reverse proxy)')
     p_serve.add_argument('--open', dest='open_browser', action='store_true',
                          default=None,
                          help='open the web UI in a browser after startup '
@@ -2261,8 +2265,12 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         open_browser = sys.stdin.isatty() and sys.stdout.isatty()
     if open_browser:
         _schedule_browser_open(args.host, args.port)
-    serve(host=args.host, port=args.port, reload=args.reload)
-    return 0
+    try:
+        serve(host=args.host, port=args.port, reload=args.reload,
+              allow_unauthenticated=args.allow_unauthenticated)
+    except ValueError as exc:
+        _err(str(exc))
+        return 2
     return 0
 
 

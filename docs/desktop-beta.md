@@ -504,10 +504,12 @@ issue](#feedback).
 
 ## Security and privacy
 
-- **The web UI is loopback-only.** uvicorn binds `127.0.0.1` by default;
-  your browser talks to a server on your own machine. `--host` exists for
-  unusual setups -- exposing the UI to a network is your decision and your
-  responsibility (the server has no authentication of its own).
+- **The web UI is loopback-only by default.** uvicorn binds `127.0.0.1`;
+  your browser talks to a server on your own machine, and a Host-header
+  allowlist mitigates DNS rebinding. For an unusual network-facing setup,
+  set `OBSCURALENS_WEB_TOKEN` first: the launcher refuses a non-loopback
+  bind without it, and the UI will ask for the Bearer token. Keep TLS and
+  any additional access control at the reverse proxy.
 - **No telemetry.** The desktop app does not phone home. The only GitHub
   requests it ever makes are the explicit `--check-update` /
   `obscuralens update check` calls and the opt-in network probe inside

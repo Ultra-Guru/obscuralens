@@ -19,6 +19,8 @@
  * dormant (zero sockets, zero timers) until a view calls `connect()`.
  */
 
+import { api, request } from './api.js';
+
 /** Event topics the backend is known to emit. */
 export const TOPICS = ['connected', 'lookup', 'watch', 'alert',
   'analytics', 'heartbeat', 'disconnect'];
@@ -56,11 +58,14 @@ export class SseClient {
    * @param {string} path Stream endpoint (default-style '/api/stream').
    * @param {{reconnectMs?: number, maxRetry?: number,
    *          pollFn?: function(): Promise<*>|null,
-   *          pollMs?: number}} [options]
+   *          pollMs?: number,
+   *          ticketProvider?: function(): Promise<*>|null}} [options]
    *   `reconnectMs` is the *base* backoff delay; `maxRetry` the attempt
    *   budget; `pollFn`/`pollMs` configure the EventSource-less fallback
    *   (the default pollFn pings `/api/health` and re-emits the result as
-   *   `heartbeat` events so liveness badges keep working).
+   *   `heartbeat` events so liveness badges keep working). `ticketProvider`
+   *   obtains a one-time ticket because native EventSource cannot set an
+   *   Authorization header; the long-lived API token never enters the URL.
    */
   constructor(path = '/api/stream', options = {}) {
     this.path = path;
@@ -72,6 +77,8 @@ export class SseClient {
       ? Math.max(500, +options.pollMs) : 15000;
     this.pollFn = typeof options.pollFn === 'function'
       ? options.pollFn : null;
+    this.ticketProvider = typeof options.ticketProvider === 'function'
+      ? options.ticketProvider : null;
 
     /** @type {Map<string, Set<function(*, Object): void>>} */
     this._handlers = new Map();
@@ -83,6 +90,8 @@ export class SseClient {
     this._pollTimer = null;
     this._retries = 0;
     this._state = 'idle';
+    // Invalidates an in-flight ticket request after close/reconnect.
+    this._connectId = 0;
 
     // pre-register the known topics so on() can be called before connect()
     for (const topic of TOPICS) this._handlers.set(topic, new Set());
@@ -123,12 +132,33 @@ export class SseClient {
     }
     this._clearTimer();
     this._state = 'connecting';
+    const connectId = ++this._connectId;
+    const pending = this.ticketProvider
+      ? Promise.resolve().then(() => this.ticketProvider()) : Promise.resolve(null);
+    pending.then((payload) => {
+      if (connectId !== this._connectId || this._state !== 'connecting') return;
+      const ticket = typeof payload === 'string' ? payload : payload?.ticket;
+      this._openSource(ticket || '');
+    }).catch(() => {
+      if (connectId !== this._connectId || this._state !== 'connecting') return;
+      this._emit('disconnect', { retries: this._retries }, { type: 'error' });
+      this._scheduleReconnect();
+    });
+    return this;
+  }
+
+  /** Open EventSource after the optional one-time ticket is available. */
+  _openSource(ticket) {
     let source;
     try {
-      source = new EventSource(this.path);
+      const separator = this.path.includes('?') ? '&' : '?';
+      const url = ticket
+        ? `${this.path}${separator}ticket=${encodeURIComponent(ticket)}`
+        : this.path;
+      source = new EventSource(url);
     } catch {
       this._scheduleReconnect();
-      return this;
+      return;
     }
     this._source = source;
 
@@ -151,12 +181,11 @@ export class SseClient {
 
     source.onerror = () => {
       // EventSource auto-retries on its own; we take over instead so the
-      // retry budget and backoff are ours.
+      // retry budget and backoff are ours. A reconnect obtains a new ticket.
       this._teardownSource();
       this._emit('disconnect', { retries: this._retries }, { type: 'error' });
       this._scheduleReconnect();
     };
-    return this;
   }
 
   /**
@@ -218,20 +247,9 @@ export class SseClient {
     if (!clean.length) {
       throw new Error('subscribeEvents: at least one topic is required');
     }
-    const response = await fetch('/api/stream/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topics: clean }),
+    return request('/api/stream/subscribe', {
+      method: 'POST', body: { topics: clean },
     });
-    const text = await response.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-    if (!response.ok) {
-      const detail = data && typeof data === 'object' ? data.detail : data;
-      throw new Error(typeof detail === 'string' && detail
-        ? detail : `HTTP ${response.status} ${response.statusText}`);
-    }
-    return data;
   }
 
   /**
@@ -279,10 +297,9 @@ export class SseClient {
       { type: 'connected' });
     const defaultPoll = async () => {
       try {
-        const response = await fetch('/api/health');
-        const data = await response.json();
+        const data = await api.health();
         this._emit('heartbeat', data, { type: 'heartbeat' });
-        return response.ok;
+        return true;
       } catch {
         this._emit('disconnect', { mode: 'polling' }, { type: 'error' });
         return true; // keep polling — the server may come back
@@ -366,6 +383,7 @@ export class SseClient {
    * @returns {SseClient} this — chainable.
    */
   close() {
+    this._connectId += 1;
     this._clearTimer();
     this._teardownSource();
     if (typeof this._pollTimer === 'function') {
@@ -379,6 +397,8 @@ export class SseClient {
 }
 
 /** Pre-configured singleton for the standard backend feed. */
-export const sse = new SseClient('/api/stream');
+export const sse = new SseClient('/api/stream', {
+  ticketProvider: () => api.streamTicket(),
+});
 
 export default sse;

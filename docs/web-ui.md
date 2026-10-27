@@ -31,12 +31,22 @@ The SPA is served at `/`, the OpenAPI docs stay at `/docs`, and every
 endpoint the UI calls is the same one documented in
 [docs/api.md](api.md).
 
+For a shared deployment, set `OBSCURALENS_WEB_TOKEN` before `serve`. The UI
+then opens with a **Protected workspace** gate: paste the same token and it
+is checked before any view loads. It is stored only in that tab's
+`sessionStorage`, sent as an `Authorization: Bearer` header, and cleared
+when the tab closes or the server rejects it. Live events use 30-second
+single-use tickets rather than putting the token in an `EventSource` URL.
+Non-loopback servers refuse to start without this token unless
+`--allow-unauthenticated` explicitly delegates authentication to a reverse
+proxy. See [the API authentication guide](api.md#authentication-and-transport-security).
+
 ## Layout
 
 The shell is a fixed structure: **sidebar** (brand, quick search, view
 navigation, backend status, theme toggle), **topbar** (current view title,
 command palette button), the **view container** and a sticky **footer**
-("14 target kinds · provenance-tracked · all processing stays on your
+("20 target kinds · provenance-tracked · all processing stays on your
 machine"). The sidebar collapses to icons below ~900px and becomes an
 off-canvas drawer with a hamburger below ~640px.
 

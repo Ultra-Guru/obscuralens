@@ -152,10 +152,10 @@ class ObscuraLensClient:
             trailing slash). A path prefix such as
             ``http://host/obscuralens`` is preserved.
         api_key: optional session API key sent as an ``X-API-Key`` header
-            on every request. The stock server ignores it (it has no
-            built-in auth), but authenticating reverse proxies and the
-            ``OBSCURALENS_API_KEY`` deployment pattern honour it. Leave
-            ``None`` when talking to a plain local server.
+            on every request. Use the server's ``OBSCURALENS_WEB_TOKEN``
+            value for native authentication; authenticating reverse proxies
+            honour the same contract. Leave ``None`` for a plain local
+            server.
         timeout: per-request timeout in seconds (``None`` = transport
             default).
         retries: maximum number of attempts per request *including the
@@ -1229,7 +1229,7 @@ class ObscuraLensClient:
 
         Returns:
             A list of :class:`~obscuralens.sdk.models.KindInfo` — one per
-            kind, all 14, each with its ``sources`` list.
+            kind, all 20, each with its ``sources`` list.
 
         Example:
             >>> client = ObscuraLensClient()

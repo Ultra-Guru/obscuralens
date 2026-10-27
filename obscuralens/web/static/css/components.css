@@ -691,3 +691,19 @@
   font-size: var(--text-sm);
   color: var(--text-strong);
 }
+
+/* --------------------------------------------------------------------------
+   Session-only bearer authentication gate
+   -------------------------------------------------------------------------- */
+.auth-gate {
+  width: min(460px, calc(100% - 2rem));
+  margin: clamp(2rem, 10vh, 7rem) auto;
+  padding: var(--sp-6);
+  text-align: center;
+}
+.auth-mark { color: var(--accent); margin-bottom: var(--sp-3); }
+.auth-gate h2 { margin: 0 0 var(--sp-2); color: var(--text-strong); }
+.auth-gate .muted { color: var(--text-muted); line-height: 1.6; }
+.auth-form { display: grid; gap: var(--sp-3); margin-top: var(--sp-5); text-align: left; }
+.auth-form .btn { width: 100%; }
+.auth-error { min-height: 1.25rem; margin: 0; color: var(--danger); font-size: var(--text-sm); }
