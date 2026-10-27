@@ -386,8 +386,19 @@ class ReportGenerator:
             from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import inch
             from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-        except ImportError:
-            return "ReportLab library not installed. Install with: pip install reportlab"
+        except ImportError as exc:
+            # reportlab is installed but unusable on this interpreter when a
+            # release raises on import -- 5.1.0 requires Python 3.10+ yet its
+            # metadata still advertises requires_python>=3.9, so pip installs
+            # it on 3.9 anyway. Report what actually went wrong instead of
+            # claiming the library is missing.
+            detail = str(exc).strip().splitlines()
+            hint = detail[0] if detail else ''
+            if 'reportlab requires' in hint:
+                return (f'ReportLab is installed but unusable here: {hint} '
+                        'Pin an older release (reportlab<5.1.0) or upgrade '
+                        'Python.')
+            return 'ReportLab library not installed. Install with: pip install reportlab'
 
         filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         output_path = self.output_dir / filename

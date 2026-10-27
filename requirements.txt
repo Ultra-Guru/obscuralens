@@ -13,7 +13,11 @@ numpy>=1.23.0
 wordcloud>=1.8.0
 
 # Reporting
-reportlab>=3.6.0
+# reportlab 5.1.0 raises ImportError on Python 3.9 (internal
+# __min_python_version__ went to 3.10) but still advertises
+# requires_python>=3.9, so pip installs a broken combination.
+reportlab>=3.6.0,<5.1.0; python_version < '3.10'
+reportlab>=3.6.0; python_version >= '3.10'
 
 # Database
 # psycopg2-binary>=2.9.0  # Uncomment for PostgreSQL

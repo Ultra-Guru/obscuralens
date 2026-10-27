@@ -668,3 +668,57 @@ class TestSurfaceConsistency:
         mcp = mcp_server._HANDLERS['rules_packs']({})
         assert library['total_rules'] == api['total_rules'] == \
             mcp['total_rules']
+
+
+# --------------------------------------------------------------------------- #
+# Dependency-metadata regression (reportlab 5.1.0 on Python 3.9)
+# --------------------------------------------------------------------------- #
+
+class TestReportlabImportDiagnostic:
+    """
+    reportlab 5.1.0 raises ``ImportError`` on Python 3.9 -- it bumped its
+    internal ``__min_python_version__`` to ``(3, 10)`` -- while its packaging
+    metadata still advertises ``requires_python>=3.9``.  pip therefore
+    installs it on 3.9 and every PDF path reported "not installed", which
+    sent anyone debugging it down the wrong path.  The dependency is now
+    capped for 3.9 and the message distinguishes the two cases.
+    """
+
+    @staticmethod
+    def _pdf_message(monkeypatch, error):
+        import builtins
+
+        from obscuralens.reporting.report_generator import ReportGenerator
+        real_import = builtins.__import__
+
+        def _fake(name, *args, **kwargs):
+            if name.startswith('reportlab'):
+                raise ImportError(error)
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, '__import__', _fake)
+        import tempfile
+        generator = ReportGenerator(output_dir=tempfile.mkdtemp())
+        return generator.generate_pdf_report({'sections': []}, 'T')
+
+    def test_unusable_install_is_reported_accurately(self, monkeypatch):
+        message = self._pdf_message(
+            monkeypatch,
+            'reportlab requires 3.10+; other versions are unsupported.')
+        assert 'installed but unusable' in message
+        assert 'reportlab<5.1.0' in message
+
+    def test_genuinely_missing_library_message_is_unchanged(self, monkeypatch):
+        message = self._pdf_message(monkeypatch,
+                                    "No module named 'reportlab'")
+        assert message.startswith('ReportLab library not installed')
+
+    def test_requirements_cap_reportlab_on_python_39(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        for name in ('pyproject.toml', 'requirements.txt'):
+            text = (root / name).read_text(encoding='utf-8')
+            assert "reportlab>=3.6.0,<5.1.0; python_version < '3.10'" in text, \
+                f'{name} must cap reportlab for Python 3.9'
+            assert "reportlab>=3.6.0; python_version >= '3.10'" in text, \
+                f'{name} must keep reportlab unpinned for Python 3.10+'

@@ -43,6 +43,17 @@ it into every surface. Test count 5,044 → 5,149 (+105).
 
 ### Fixed
 
+- **Python 3.9 CI was broken by a reportlab release, not by this change.**
+  reportlab 5.1.0 (22 Oct 2026) bumped its internal
+  `__min_python_version__` to `(3, 10)` and raises `ImportError` on 3.9,
+  but its packaging metadata still advertises `requires_python>=3.9`, so pip
+  installs it there anyway. Every PDF path then reported *"ReportLab library
+  not installed"* for a library that was installed, and `test (3.9)` went red
+  on whichever run first resolved 5.1.0. reportlab is now capped
+  (`<5.1.0`) for `python_version < '3.10'` and left unpinned above it, and the
+  PDF error message distinguishes "installed but unusable on this
+  interpreter" from "genuinely missing" instead of sending the next person
+  down the wrong path.
 - **"No data collected" is no longer scored into a risk band.** The first cut
   of `evaluate_payload` flattened a non-mapping payload to `{}` and evaluated
   that, which let the data-quality rules (`SHARED-006` no provenance,
