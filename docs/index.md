@@ -37,6 +37,7 @@ monitor: [scheduling.md](scheduling.md).
 | Doc | What it gives you |
 |---|---|
 | [sources.md](sources.md) | the full data-source catalog per kind |
+| [wmn.md](wmn.md) | the WhatsMyName community-dataset username sweep (`obscuralens wmn`) |
 | [advanced.md](advanced.md) | investigation workflow: pivots, correlation, timelines, risk, cases, pipelines, source health |
 | [rules.md](rules.md) | explainable risk rule packs (YAML DSL) |
 | [analytics.md](analytics.md) | the analytics package: stats, anomalies, clustering, trends |
