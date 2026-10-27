@@ -2,6 +2,79 @@
 
 ## Changelog
 
+## Unreleased — rule-engine integration (v6.3)
+
+The v5.1 YAML rule engine shipped as a library-only API and stayed that way:
+1,250 lines of engine and **224 curated rules across 21 packs** that nothing
+in the product consumed. `docs/rules.md` said so plainly — *"no CLI command,
+REST endpoint or shipped report template consumes it yet"*. This release wires
+it into every surface. Test count 5,044 → 5,149 (+105).
+
+### Added — the rule packs are now reachable from every surface
+
+- **`obscuralens/rules/integration.py`** — the adapter layer the engine was
+  missing. `fields_for` flattens a tracker envelope (`{'info': {...}}`) into
+  the flat field dict rule conditions expect, with `info` winning on collision
+  because that is where the authoritative facts live; `evaluate_payload` is
+  the one call every surface shares, so the CLI, API, MCP server and SDK
+  cannot drift apart; `rule_sections` emits the **same section shapes** as
+  `correlation.risk.risk_sections`, so findings render through the existing
+  text, Markdown and HTML paths with no template changes; `packs_catalog`
+  makes the shipped inventory introspectable without reading YAML off disk.
+- **CLI** — `obscuralens rules <kind> <target>` evaluates the kind pack plus
+  the always-on `shared` pack and prints the score/band summary, the rules
+  that fired and the per-condition explanations. `obscuralens rules --list`
+  prints the pack inventory with per-pack severity mixes. A `--rules` flag
+  now works on **every** lookup command, attaching a `rules` block to JSON
+  output and a findings section to table output.
+- **REST API** — `GET /api/rules/packs` (offline pack inventory) and
+  `GET /api/rules/{kind}/{target}` (lookup + attached evaluation), mirroring
+  how `/api/risk/...` attaches `risk`. Unknown kinds and invalid targets
+  return `400`.
+- **MCP server, 63 → 65 tools** — `rules_packs` returns the inventory;
+  `rules_evaluate` takes `kind` plus `data` (a full tracker report *or* a flat
+  field dict) and returns scored, self-explaining hits. Both are fully
+  offline: `rules_evaluate` scores data you supply and never performs a
+  lookup, so an agent can look up once and score many times.
+- **SDK** — `client.rules(kind, target)` and `client.rule_packs()`, mirrored
+  on `AsyncObscuraLensClient`, returning the new `RuleReport` model
+  (`score`, `band`, `hits`, `matched_ids()`, `by_severity()`, `explain()`,
+  `is_high_or_worse()`) built from `RuleHitModel` entries.
+
+### Fixed
+
+- **"No data collected" is no longer scored into a risk band.** The first cut
+  of `evaluate_payload` flattened a non-mapping payload to `{}` and evaluated
+  that, which let the data-quality rules (`SHARED-006` no provenance,
+  `IP-010` no hostnames) fire against an absent result and report a `watch`
+  band for a lookup that returned nothing. It now defers to the engine's own
+  empty-result contract, matching `evaluate_rules(kind, None)`.
+
+### Changed
+
+- `docs/rules.md` replaces its "Integration point (what exists today,
+  honestly)" section — which documented the absence of integration — with
+  worked CLI, REST, MCP, SDK and library usage.
+- `docs/api.md` documents both new endpoints with their response shapes and
+  the band thresholds (`clean` 0-9, `watch` 10-29, `elevated` 30-59,
+  `high` 60-79, `critical` 80-100).
+
+### Tests
+
+- **+105 offline cases** (`tests/test_rules_integration.py`): envelope
+  flattening and its defensive paths, scoring across eight kinds, section
+  shaping and severity ordering, the pack catalog's internal consistency
+  (per-pack severity counts must sum to the pack's rule count, which must sum
+  to the reported total), the CLI command and `--rules` flag including the
+  invalid-target path that must never reach a tracker, both REST endpoints,
+  both MCP tools including a monkeypatched assertion that `rules_evaluate`
+  performs no network lookup, the SDK models and client paths, and a
+  **cross-surface consistency** class asserting the library, API and MCP
+  surfaces report identical scores and bands for identical input.
+- Updated the four hardcoded MCP tool-count assertions in
+  `tests/test_mcp_server.py`, `tests/test_analytics.py` and `tests/test_app.py`
+  for the 65-tool surface.
+
 ## Unreleased — CI repair, report hardening & registry integrity
 
 Five independent fixes, each reproduced before the change and covered by tests

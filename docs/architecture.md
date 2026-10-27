@@ -31,7 +31,7 @@ quality program is expanding it). For user-facing guides start at
 │  tui.py          Textual terminal UI ([tui] extra)                 │
 │  web/app.py      FastAPI REST API (74 /api endpoints) + SPA        │
 │  web/static/     single-page app: index.html + css/ + js/          │
-│  mcp_server.py   MCP stdio JSON-RPC server (63 tools)              │
+│  mcp_server.py   MCP stdio JSON-RPC server (65 tools)              │
 │  sdk/            Python SDK: sync + async clients + session        │
 │  sdk-js/         TypeScript/JavaScript SDK (zero npm deps)         │
 └───────────────────────────────┬─────────────────────────────────────┘
@@ -455,7 +455,7 @@ each is pinned by tests that assert the exact contract:
   automation (6), exports (graph/STIX/MISP), cases (7), watch (4),
   profile/compare/map views and the SSE stream. Reference:
   [api.md](api.md).
-- **MCP** — 63 tools in `obscuralens/mcp_server.py` (verified against
+- **MCP** — 65 tools in `obscuralens/mcp_server.py` (verified against
   `TOOLS`): 20 kind lookups (`ip_lookup` … `plate_lookup`), 5
   investigation/history views (`investigate`, `risk_report`,
   `correlate`, `timeline`, `history_search`), 2 intel/health views

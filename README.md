@@ -1,4 +1,4 @@
-# ObscuraLens v6.2 — Sensors, Analytics & Ecosystem
+# ObscuraLens v6.3 — Sensors, Analytics & Ecosystem
 
 > **Founder & maintainer:** MJH
 
@@ -13,6 +13,16 @@ macOS and Linux binaries ship with every beta release too.
 </div>
 
 Multi-source OSINT console and investigation platform for **20 target kinds**: IP addresses, phone numbers, usernames, email addresses, domains, URLs, crypto addresses, file hashes, CVEs, AS numbers, MAC addresses, IBANs, IMEIs, geographic coordinates, VINs, flight numbers, maritime MMSIs, software packages, WiFi BSSIDs and license plates. Every lookup fans out to all available data sources in parallel, merges the fields, tracks **which source supplied each fact**, and scores **how well each fact is corroborated** (noisy-OR evidence confidence over a curated source-trust table) — no silent single-source lookups, no false-positive "hits". v6.2 completes the six-part v6.0 programme: **Part 1** grew the sensor matrix to 20 kinds (VINs, flight designators, MMSIs, software packages, WiFi BSSIDs, license plates); **Part 2** added a ten-module pure-stdlib analytics package; **Part 3** expanded the web UI with five new views, an offline world map and live SSE; **Part 4** shipped the notification centre, task scheduler and STIX 2.1 / MISP exports; **Part 5** was the ecosystem release — Python SDK v6 with a fluent `InvestigationSession`, a dependency-free TypeScript SDK, a 63-tool MCP server, Plugin SDK v2 and shell completions; **Part 6** landed the benchmark suite (with committed baselines), a 1,300-case test expansion and the full documentation set (architecture, contributing, security). v6.1 added evidence-confidence scoring, a search-dork builder across 13 kinds, three new blockchains (TRON/NEAR/ATOM, 7 → 10 chains) and 17 new live-verified keyless sources; v5.2 doubled the username sweep to **104 platforms** (now 112) and cut cache latency 25-75x; v5.1 shipped the Desktop Beta; v5.0 added the analyst toolbox, web UI and launcher; v4.0 layered the investigation workflow (pivots, correlation, timelines, risk scoring, cases, pipelines). See [docs/sources.md](docs/sources.md) for the full source catalog.
+
+## What's new in v6.3 (Rule-Engine Integration)
+
+- **The 224 shipped rules are finally reachable.** The explainable YAML rule engine landed in v5.1 as a library-only API — 1,250 lines of engine and **224 curated rules across 21 packs** that no CLI command, REST endpoint or report template consumed (`docs/rules.md` documented the gap in as many words). v6.3 adds the missing adapter layer and wires the packs into every surface, so the heuristics an analyst can read, audit and override are now part of the product rather than an import away.
+- **CLI**: `obscuralens rules <kind> <target>` prints the score/band summary, the rules that fired and the per-condition explanations against your real field values; `obscuralens rules --list` inventories every pack with its severity mix; and a `--rules` flag works on **every** lookup command, attaching findings to JSON and table output alike.
+- **REST API**: `GET /api/rules/packs` (offline pack inventory) and `GET /api/rules/{kind}/{target}` (lookup plus attached evaluation), mirroring how `/api/risk/...` attaches `risk`.
+- **MCP server 63 → 65 tools**: `rules_packs` for discovery and `rules_evaluate` for scoring — the latter evaluates data you supply and never performs a lookup, so an agent can look up once and score many times.
+- **SDK**: `client.rules(kind, target)` and `client.rule_packs()` on both the sync and async clients, returning a `RuleReport` with `matched_ids()`, `by_severity()`, `explain()` and `is_high_or_worse()`.
+- **Why it matters**: `risk` weighs signals in code; rule packs declare the same class of heuristics as **data you can edit**. Every hit carries its id, title, severity, weight and the conditions that matched — the engine's contract is that *a hit tells you why*. Rules describe technical indicators, never people. See [docs/rules.md](docs/rules.md).
+- **+105 offline tests** (5,044 → 5,149), including a cross-surface consistency suite that asserts the library, REST and MCP surfaces report identical scores for identical input, and one real bug fixed: a non-mapping payload ("no data collected") was being scored into a `watch` band by the data-quality rules.
 
 ## What's new in v6.2 (Quality, Benchmarks & Docs)
 
@@ -169,7 +179,7 @@ Optional extras: `pip install -e ".[web]"` (web UI/API), `".[tui]"` (terminal UI
 | **pipx / uv (no clone)** | `pipx install obscuralens` · `uvx obscuralens ip 8.8.8.8` | once published to PyPI |
 | **Web UI + REST API** | `pip install -e ".[web]"` then `obscuralens serve` | http://127.0.0.1:8000 (OpenAPI at `/docs`) |
 | **Terminal UI (TUI)** | `pip install -e ".[tui]"` then `obscuralens tui` | Textual rich interface |
-| **MCP server (AI agents)** | `obscuralens mcp` | JSON-RPC over stdio; 63 tools |
+| **MCP server (AI agents)** | `obscuralens mcp` | JSON-RPC over stdio; 65 tools |
 | **Docker** | `docker run --rm ghcr.io/aceguru-mjh/obscuralens ip 8.8.8.8` | published to GHCR on `main` |
 | **Docker Compose (web)** | `docker compose up` | serves the web UI on :8000 |
 | **Standalone executable** | `pyinstaller scripts/obscuralens.spec --noconfirm` | self-contained `.exe` (console + web UI + TUI inside); CI uploads `obscuralens-windows-exe` |

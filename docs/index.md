@@ -12,7 +12,7 @@ Reading map for everything in `docs/` (plus the root guides). The
 >    nothing leaves the machine except the source API calls.
 > 3. **Four surfaces, one engine**: the CLI (menu + 56 argparse
 >    commands), the web UI/REST API (74 endpoints), the MCP server
->    (63 tools for AI agents) and two SDKs (Python + TypeScript) all
+>    (65 tools for AI agents) and two SDKs (Python + TypeScript) all
 >    drive the same trackers.
 
 Now find yourself in the table below.

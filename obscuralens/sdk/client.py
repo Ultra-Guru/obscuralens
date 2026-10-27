@@ -86,6 +86,7 @@ from .models import (
     PairComparison,
     PatternReport,
     RiskReport,
+    RuleReport,
     ServiceKey,
     SourceHealthEntry,
     StatsSummary,
@@ -1044,6 +1045,68 @@ class ObscuraLensClient:
         path = self._path('/api/risk/{0}/{1}', kind, target)
         payload = self._request('GET', path)
         return RiskReport.from_dict(payload, kind=kind, target=target)
+
+    def rules(self, kind: str, target: str) -> RuleReport:
+        """
+        Run a lookup with explainable YAML rule-pack findings attached.
+
+        ``GET /api/rules/{kind}/{target}`` — the kind's pack plus the
+        always-evaluated ``shared`` pack run against the lookup fields.
+        Unlike :meth:`risk` (weighted signals computed in code), the rule
+        packs are analyst-editable YAML: every hit carries its id, title,
+        severity, weight and the conditions that matched the real field
+        values.
+
+        The rules describe technical indicators, never people — a hit is a
+        triage aid, not a verdict.
+
+        Args:
+            kind: tracker kind (see :meth:`lookup`).
+            target: the indicator value.
+
+        Returns:
+            A :class:`~obscuralens.sdk.models.RuleReport` — ``score``
+            (0-100), ``band`` (clean/watch/elevated/high/critical),
+            ``hits`` (self-explaining rule matches) and the underlying
+            envelope as ``.lookup``.
+
+        Raises:
+            ValueError: unknown kind.
+            BadRequestError: invalid target.
+
+        Example:
+            >>> client = ObscuraLensClient()
+            >>> report = client.rules("ip", "1.1.1.1")      # doctest: +SKIP
+            >>> report.band                                  # doctest: +SKIP
+            'clean'
+            >>> report.explain()                             # doctest: +SKIP
+            []
+        """
+        kind = str(kind or '').strip().lower()
+        if kind not in KINDS:
+            raise ValueError(
+                f'unknown kind {kind!r} — expected one of {", ".join(KINDS)}')
+        path = self._path('/api/rules/{0}/{1}', kind, target)
+        payload = self._request('GET', path)
+        return RuleReport.from_dict(payload, kind=kind, target=target)
+
+    def rule_packs(self) -> Dict[str, Any]:
+        """
+        Inventory of the shipped rule packs.
+
+        ``GET /api/rules/packs`` — discover which kinds have rule
+        coverage before calling :meth:`rules`.
+
+        Returns:
+            ``{'packs': [{'kind', 'name', 'description', 'version',
+            'rules', 'severities'}, ...], 'total_packs', 'total_rules'}``.
+
+        Example:
+            >>> client = ObscuraLensClient()
+            >>> client.rule_packs()['total_rules']    # doctest: +SKIP
+            224
+        """
+        return self._request('GET', '/api/rules/packs')
 
     def timeline(self, target: Optional[str] = None,
                  limit: int = 100) -> Timeline:

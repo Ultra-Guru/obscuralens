@@ -48,8 +48,17 @@ from .engine import (
     resolve_field,
     rules_summary,
 )
+from .integration import (
+    SEVERITY_ORDER,
+    evaluate_payload,
+    fields_for,
+    packs_catalog,
+    rule_sections,
+    severity_counts,
+)
 
 __all__ = [
+    'SEVERITY_ORDER',
     'BANDS',
     'EVAL_WARNINGS',
     'LOAD_WARNINGS',
@@ -69,5 +78,10 @@ __all__ = [
     'packs_dir',
     'reset_rule_caches',
     'resolve_field',
+    'evaluate_payload',
+    'fields_for',
+    'packs_catalog',
+    'rule_sections',
+    'severity_counts',
     'rules_summary',
 ]

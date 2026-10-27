@@ -40,6 +40,8 @@ __all__ = [
     'Provenance',
     'LookupResult',
     'RiskReport',
+    'RuleHitModel',
+    'RuleReport',
     'TimelineEvent',
     'Timeline',
     'CorrelationCluster',
@@ -687,6 +689,166 @@ class RiskReport:
             weight = _as_int(signal.get('weight'))
             lines.append(f"{_as_str(signal.get('id'))} (+{weight}): "
                          f"{_as_str(signal.get('detail'))}")
+        return lines
+
+
+# ---------------------------------------------------------------------------
+# Rule packs (v6.3)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RuleHitModel:
+    """
+    One rule that fired, with the conditions that made it fire.
+
+    Attributes:
+        id: stable pack-unique rule identifier (e.g. ``IP-001``).
+        title: short headline for reports.
+        description: why the signal matters, in plain language.
+        severity: ``info`` / ``low`` / ``medium`` / ``high`` / ``critical``.
+        weight: the rule's contribution to the pack score.
+        tags: free-form rule tags (``anonymisation``, ``tor``, ...).
+        references: external references the pack author cited.
+        explanations: per-condition explanations against real field values.
+    """
+
+    id: str = ''
+    title: str = ''
+    description: str = ''
+    severity: str = 'info'
+    weight: int = 0
+    tags: List[str] = dc_field(default_factory=list)
+    references: List[str] = dc_field(default_factory=list)
+    explanations: List[str] = dc_field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Any) -> 'RuleHitModel':
+        """Build from one entry of a ``RuleEvaluation.to_dict()['hits']``."""
+        payload = from_dict(data)
+        return cls(
+            id=_as_str(payload.get('id')),
+            title=_as_str(payload.get('title')),
+            description=_as_str(payload.get('description')),
+            severity=_as_str(payload.get('severity')) or 'info',
+            weight=_as_int(_pick(payload, 'weight', 'score')),
+            tags=[_as_str(tag) for tag in payload.get('tags') or []],
+            references=[_as_str(ref) for ref in payload.get('references') or []],
+            explanations=[_as_str(line)
+                          for line in payload.get('explanations') or []],
+        )
+
+    def __str__(self) -> str:
+        return f'{self.id} [{self.severity}] {self.title}'
+
+
+@dataclass
+class RuleReport:
+    """
+    Explainable YAML rule-pack evaluation for one target (v6.3).
+
+    The server attaches ``{"kind", "score", "band", "hits"}`` to a lookup
+    envelope under the ``rules`` key; :meth:`from_dict` accepts the whole
+    envelope *or* the bare rules block.
+
+    Bands follow the rule engine: ``clean`` (0-9), ``watch`` (10-29),
+    ``elevated`` (30-59), ``high`` (60-79), ``critical`` (80-100).
+
+    Attributes:
+        kind: the evaluated pack's kind.
+        target: the evaluated target value.
+        score: 0-100 sum of matched rule weights.
+        band: clean / watch / elevated / high / critical.
+        hits: the rules that fired, as :class:`RuleHitModel` entries.
+        lookup: the lookup envelope, when the payload was a full response.
+        raw: the untouched rules block.
+    """
+
+    kind: str = ''
+    target: str = ''
+    score: int = 0
+    band: str = 'clean'
+    hits: List[RuleHitModel] = dc_field(default_factory=list)
+    lookup: Optional[LookupResult] = None
+    raw: Dict[str, Any] = dc_field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: Any, kind: Optional[str] = None,
+                  target: Optional[str] = None) -> 'RuleReport':
+        """
+        Build from a ``rules`` envelope or a bare rules block.
+
+        Example:
+            >>> report = RuleReport.from_dict(
+            ...     {'rules': {'kind': 'ip', 'score': 20, 'band': 'watch',
+            ...                'hits': [{'id': 'IP-001', 'severity': 'high',
+            ...                          'weight': 20}]}},
+            ...     target='1.1.1.1')
+            >>> report.score, report.band, report.hits[0].id
+            (20, 'watch', 'IP-001')
+        """
+        payload = from_dict(data)
+        block = payload.get('rules') if isinstance(
+            payload.get('rules'), Mapping) else None
+        envelope: Optional[Dict[str, Any]] = None
+        if block is None:
+            block = payload
+        else:
+            envelope = payload
+        block = from_dict(block)
+        lookup = None
+        if envelope is not None:
+            lookup = LookupResult.from_dict(envelope, kind=kind)
+            if not target:
+                target = lookup.target
+            if not kind:
+                kind = lookup.kind
+        return cls(
+            kind=_as_str(kind or block.get('kind')),
+            target=_as_str(target),
+            score=_as_int(block.get('score')),
+            band=_as_str(block.get('band')) or 'clean',
+            hits=[RuleHitModel.from_dict(hit)
+                  for hit in block.get('hits') or []
+                  if isinstance(hit, Mapping)],
+            lookup=lookup,
+            raw=block,
+        )
+
+    def matched_ids(self) -> List[str]:
+        """Ids of every rule that fired, in server order."""
+        return [hit.id for hit in self.hits]
+
+    def by_severity(self, severity: str) -> List[RuleHitModel]:
+        """Hits whose severity equals ``severity`` (case-insensitive)."""
+        needle = str(severity or '').strip().lower()
+        return [hit for hit in self.hits if hit.severity.lower() == needle]
+
+    def is_clean(self) -> bool:
+        """True when no rule fired."""
+        return not self.hits
+
+    def is_high_or_worse(self) -> bool:
+        """True for the ``high`` and ``critical`` bands."""
+        return self.band in ('high', 'critical')
+
+    def explain(self) -> List[str]:
+        """
+        Human-readable hit lines, heaviest first.
+
+        Example:
+            >>> report = RuleReport.from_dict(
+            ...     {'score': 20, 'band': 'watch',
+            ...      'hits': [{'id': 'IP-001', 'title': 'Tor exit node',
+            ...                'severity': 'high', 'weight': 20,
+            ...                'explanations': ['is_tor is true']}]})
+            >>> report.explain()
+            ['IP-001 [high] Tor exit node (+20): is_tor is true']
+        """
+        lines = []
+        for hit in sorted(self.hits, key=lambda item: -item.weight):
+            why = ' | '.join(hit.explanations)
+            lines.append(f'{hit.id} [{hit.severity}] {hit.title} '
+                         f'(+{hit.weight}): {why}')
         return lines
 
 

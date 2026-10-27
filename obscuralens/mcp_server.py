@@ -1247,6 +1247,35 @@ TOOLS: List[Dict[str, Any]] = [
             'additionalProperties': False,
         },
     },
+    {
+        'name': 'rules_packs',
+        'description': 'List the shipped explainable YAML rule packs with '
+                       'their rule counts and severity mix (offline).',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {},
+            'additionalProperties': False,
+        },
+    },
+    {
+        'name': 'rules_evaluate',
+        'description': 'Evaluate a target kind\'s rule packs against lookup '
+                       'data and return scored, self-explaining hits '
+                       '(offline; evaluates data you supply).',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'kind': {'type': 'string',
+                         'description': 'Target kind whose pack to run '
+                                        '(ip, domain, username, ...).'},
+                'data': {'type': 'object',
+                         'description': 'Lookup fields: a full tracker '
+                                        'report or a flat field dict.'},
+            },
+            'required': ['kind', 'data'],
+            'additionalProperties': False,
+        },
+    },
 ]
 
 
@@ -2828,6 +2857,49 @@ def _tool_dorks(arguments: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _tool_rules_packs(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Inventory of the shipped explainable YAML rule packs (v6.3).
+
+    Input: none.
+
+    Output: ``{'packs': [{'kind', 'name', 'description', 'version',
+    'rules', 'severities'}, ...], 'total_packs', 'total_rules'}``.
+
+    Fully offline. Use this to discover which kinds have rule coverage and
+    how many rules each pack carries before calling ``rules_evaluate``.
+    """
+    from .rules import packs_catalog
+    return packs_catalog()
+
+
+def _tool_rules_evaluate(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evaluate a kind's rule packs against lookup data (v6.3).
+
+    Input: ``kind`` - the target kind whose pack to run (``ip``,
+    ``domain``, ``username``, ...); ``data`` - a mapping of lookup fields,
+    either a full tracker report (``{'info': {...}}``) or a flat field
+    dict. The ``shared`` pack is always evaluated alongside the kind pack.
+
+    Output: ``{'kind', 'score', 'band', 'hits': [{'id', 'title',
+    'description', 'severity', 'weight', 'score', 'tags', 'references',
+    'explanations'}, ...]}`` - every hit explains which condition matched
+    against the actual field values.
+
+    Fully offline: this evaluates data you supply and never touches the
+    network, so an agent can lookup once and score many times. The rules
+    describe technical indicators, never people; a hit is a triage aid,
+    not a verdict.
+    """
+    from .rules import evaluate_payload
+    kind = _required_str(arguments, 'kind')
+    data = arguments.get('data')
+    if not isinstance(data, dict):
+        raise ValueError('data must be an object of lookup fields')
+    return evaluate_payload(kind, data).to_dict()
+
+
 #: v5.0 tool registry: tool name -> handler, kept in the same order as the
 #: ``TOOLS`` schema entries so the advertised surface and the dispatch
 #: table can be reviewed side by side.
@@ -2881,6 +2953,9 @@ _HANDLERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     'case_list': _tool_case_list,
     'case_create': _tool_case_create,
     'data_pack_lookup': _tool_data_pack_lookup,
+    # v6.3: explainable rule packs
+    'rules_packs': _tool_rules_packs,
+    'rules_evaluate': _tool_rules_evaluate,
 }
 
 
