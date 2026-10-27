@@ -2,10 +2,10 @@
 
 ## Changelog
 
-## Unreleased — CI repair, report hardening & registry integrity
+## Unreleased — CI repair, report hardening, registry integrity & WhatsMyName interop
 
-Five independent fixes, each reproduced before the change and covered by tests
-after it. Test count 4,586 → 5,044 (+458).
+Five independent fixes plus one new integration, each reproduced before the
+change and covered by tests after it. Test count 4,586 → 5,097 (+511).
 
 ### Fixed — CI was red on `main`
 
@@ -93,6 +93,58 @@ after it. Test count 4,586 → 5,044 (+458).
   verification; proving a rule still matches a live site needs the network and
   a known-good/known-bad account pair per platform, which `sources health`
   tracks from real traffic.
+
+### Fixed — reportlab 5.x silently broke PDF reports on Python 3.9
+
+- **`reportlab` is pinned `<5` on Python 3.9** (`pyproject.toml` +
+  `requirements.txt`, mirrored in `tests/test_packaging.py`). reportlab
+  5.1.0 declares `Requires-Python: >=3.9` but its `__init__.py`
+  hard-raises `ImportError` on anything below 3.10, so the 3.9 CI leg
+  suddenly lost PDF generation: `generate_pdf_report`'s ImportError
+  fallback returned "library not installed", failing
+  `test_reports::test_generate_files` and
+  `test_cli_console::test_offer_pdf_report_writes_file` with no code
+  change on `main` (dependency drift, first seen on run 40556472016).
+  Python ≥3.10 keeps the unconstrained range - reportlab 5.1.0 passes the
+  full suite there.
+
+### Added — WhatsMyName dataset interop (`obscuralens wmn`)
+
+- **`obscuralens/trackers/wmn.py`** imports the community-curated
+  [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) dataset — the
+  same site list Sherlock and Maigret consume — as a second username sweep:
+  ~690 valid sites across 20 categories alongside the hand-verified
+  112-platform registry. The WMN per-site rules (`e_code`/`e_string` for
+  found, `m_code`/`m_string` for missing) map onto the same honest
+  three-state verdicts as the built-in sweep: evidence-string matches are
+  `found/high`, bare community-verified status splits are `found/medium`,
+  bot walls, network errors and code/evidence mismatches stay `unknown` —
+  never fabricated hits. Evidence matching is case-insensitive; a bare 200
+  is never a hit when the declared evidence string is missing (validated
+  live against PyPI, whose redesigned JS-shell profile page correctly
+  reports `unknown` against its stale upstream `e_string`).
+- Dataset lifecycle: `wmn update` downloads (or imports via
+  `--source PATH_OR_URL`) with SHA-256 provenance recorded in a metadata
+  sidecar; cache writes are atomic and the digest is re-verified on every
+  load, so a truncated cache degrades to "no dataset" with a hint instead
+  of sweeping half a list. `wmn info` and `wmn categories` expose
+  provenance and coverage; `wmn check <username>` sweeps with
+  `--category` / `--sites` / `--limit` filters, `--include-protected` opt-in
+  for bot-walled sites, and `table`/`json`/`csv` output whose rows match the
+  built-in username sweep's schema. POST-body entries (23 GraphQL/form
+  sites) are supported through a new raw `HttpClient.post` (rate-limited,
+  proxy-aware, never cached).
+- Malformed entries are skipped with reasons, upstream `valid: false` sites
+  are honoured, duplicate names deduplicated. Username validation is shared
+  with the built-in sweep, so the `{account}` placeholder cannot be abused
+  for URL injection.
+- **`tests/test_wmn.py` (53 cases)**: site validation, parsing/dedup, cache
+  integrity (digest mismatch, atomic writes, missing sidecar), download
+  failure paths, the full verdict matrix, filters, POST entries, pretty-URL
+  handling and the CLI surface — all offline. The shared test fake gains a
+  programmable raw-`post` stub so future tests can mock non-JSON POSTs too.
+- Docs: [docs/wmn.md](docs/wmn.md) (command reference, verdict-mapping
+  table, integrity and OPSEC notes).
 
 ### Added — test coverage
 

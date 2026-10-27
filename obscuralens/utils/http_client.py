@@ -91,6 +91,25 @@ class HttpClient:
             metrics.record_bytes(len(response.content or b''))
         return response
 
+    def post(self, url: str, **kwargs) -> requests.Response:
+        """
+        Perform a POST request (raw response) with rate limiting, proxy and
+        timeout.
+
+        Unlike :meth:`post_json`, the response object is returned untouched
+        so callers can inspect the status code and body of non-JSON POST
+        endpoints (e.g. WhatsMyName entries that require a form/GraphQL
+        body). POST responses are never cached.
+        """
+        self._apply_proxy()
+        rate_acquire(url)
+        metrics.record_request(url)
+        kwargs.setdefault('timeout', self.timeout)
+        response = self.session.post(url, **kwargs)
+        with contextlib.suppress(AttributeError, TypeError):
+            metrics.record_bytes(len(response.content or b''))
+        return response
+
     @staticmethod
     def _cache_key(url: str, headers: Optional[Dict[str, str]]) -> str:
         """

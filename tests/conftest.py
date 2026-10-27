@@ -93,7 +93,9 @@ def fake_http(monkeypatch):
             self.get = lambda url, **kwargs: FakeResponse()
             self.fetch = lambda url, **kwargs: (404, '', '')
             self.post = lambda url, payload=None, **kwargs: (False, None,
-                                                              'not configured')
+                                                             'not configured')
+            self.post_raw = lambda url, **kwargs: FakeResponse(
+                status_code=599, text='not configured')
             self.calls = []
 
         def install(self):
@@ -115,10 +117,15 @@ def fake_http(monkeypatch):
                 self.calls.append(('post', url))
                 return self.post(url, payload=payload, **kwargs)
 
+            def _post_raw(url, **kwargs):
+                self.calls.append(('post_raw', url))
+                return self.post_raw(url, **kwargs)
+
             monkeypatch.setattr(instance, 'get_json', _get_json)
             monkeypatch.setattr(instance, 'get', _get)
             monkeypatch.setattr(instance, 'fetch', _fetch)
             monkeypatch.setattr(instance, 'post_json', _post_json)
+            monkeypatch.setattr(instance, 'post', _post_raw)
 
     fake = FakeHttp()
     fake.install()

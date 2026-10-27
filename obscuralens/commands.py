@@ -678,6 +678,41 @@ def build_parser() -> argparse.ArgumentParser:
     p_phish.add_argument('target')
     add_common(p_phish)
 
+    # -- v6.2 WhatsMyName interop -------------------------------------------
+
+    p_wmn = sub.add_parser(
+        'wmn', help='WhatsMyName community dataset sweep for usernames')
+    wmn_sub = p_wmn.add_subparsers(dest='action', metavar='<action>')
+    p_wmn_update = wmn_sub.add_parser(
+        'update', help='download (or import) the WMN dataset into the cache')
+    p_wmn_update.add_argument(
+        '--source', metavar='PATH_OR_URL',
+        help='import from a local file or URL instead of the official dataset')
+    add_common(p_wmn_update)
+    p_wmn_info = wmn_sub.add_parser(
+        'info', help='show the cached dataset summary and integrity digest')
+    add_common(p_wmn_info)
+    p_wmn_cat = wmn_sub.add_parser(
+        'categories', help='list dataset categories and site counts')
+    add_common(p_wmn_cat)
+    p_wmn_check = wmn_sub.add_parser(
+        'check', help='sweep the cached WMN dataset for one username')
+    p_wmn_check.add_argument('target', help='username')
+    p_wmn_check.add_argument(
+        '--category', metavar='CATS',
+        help='comma-separated category filter (e.g. social,coding)')
+    p_wmn_check.add_argument(
+        '--sites', metavar='LIST',
+        help='comma-separated site names to restrict the sweep')
+    p_wmn_check.add_argument(
+        '--limit', type=int, metavar='N',
+        help='cap the number of sites checked (after filtering)')
+    p_wmn_check.add_argument(
+        '--include-protected', action='store_true',
+        help='include sites WMN flags as bot-protected (they usually '
+             'answer unknown)')
+    add_common(p_wmn_check)
+
     # -- v5.0 analyst toolbox ----------------------------------------------------
 
     p_tools = sub.add_parser(
@@ -4845,6 +4880,174 @@ def _cmd_automation_next(args: argparse.Namespace) -> int:
     return _emit_automation_table(args, payload, sections)
 
 
+# ---------------------------------------------------------------------------
+# v6.2 handlers: WhatsMyName interop
+# ---------------------------------------------------------------------------
+
+def _wmn_sections(result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Text-report sections for a WMN sweep result."""
+    dataset = result.get('dataset', {})
+    filters = result.get('filters', {})
+    dropped = filters.get('dropped_by_filter') or {}
+    sections: List[Dict[str, Any]] = [{
+        'title': 'WhatsMyName Sweep',
+        'type': 'grid',
+        'data': {
+            'Username': result.get('username', ''),
+            'Engine': 'WhatsMyName community dataset',
+            'Sites available': dataset.get('sites_available', 0),
+            'Sites selected': dataset.get('sites_selected', 0),
+            'Sites checked': result.get('total_checked', 0),
+            'Found': result.get('found_count', 0),
+            'Not found': result.get('not_found_count', 0),
+            'Unknown': result.get('unknown_count', 0),
+            'Dataset source': dataset.get('source', ''),
+            'Dataset SHA-256': (dataset.get('sha256', '') or '')[:16] + '...',
+        },
+    }]
+    if dropped:
+        sections.append({'title': 'Filters applied', 'type': 'grid',
+                         'data': {f'Sites dropped by {k}': v
+                                  for k, v in sorted(dropped.items())}})
+    rows = [[r.get('platform', ''), r.get('status', ''),
+             r.get('confidence', ''), r.get('reason', ''),
+             r.get('url', '')]
+            for r in result.get('results', [])]
+    if rows:
+        sections.append({'title': 'Results', 'type': 'table',
+                         'columns': ['Site', 'Status', 'Confidence',
+                                     'Reason', 'URL'],
+                         'rows': rows})
+    if result.get('errors'):
+        sections.append({'title': 'Errors', 'type': 'text',
+                         'content': '\n'.join(result['errors'])})
+    return sections
+
+
+def _cmd_wmn(args: argparse.Namespace) -> int:
+    from .trackers.wmn import (
+        WmnDatasetError,
+        WmnTracker,
+        load_cached_dataset,
+        update_dataset,
+    )
+
+    action = getattr(args, 'action', None)
+    if action is None:
+        _err('usage: obscuralens wmn update|info|categories|check')
+        return 2
+
+    fmt = getattr(args, 'format', None) or 'table'
+    output = getattr(args, 'output', None)
+
+    if action == 'update':
+        try:
+            dataset = update_dataset(getattr(args, 'source', None))
+        except WmnDatasetError as e:
+            _err(f'dataset update failed: {e}')
+            return 1
+        payload = dataset.summary()
+        if fmt == 'json':
+            _emit(json.dumps(payload, indent=2, ensure_ascii=False), output)
+        else:
+            _emit(_render_sections_text([{
+                'title': 'WhatsMyName dataset', 'type': 'grid',
+                'data': {
+                    'Source': payload['source'],
+                    'SHA-256': payload['sha256'],
+                    'Fetched at': payload['fetched_at'],
+                    'License': payload['license'] or 'see upstream repo',
+                    'Sites declared': payload['sites_declared'],
+                    'Sites valid': payload['sites_valid'],
+                    'Sites skipped': payload['sites_skipped'],
+                    'Categories': ', '.join(
+                        f'{c} ({n})' for c, n in payload['categories'].items()),
+                },
+            }]), output)
+        return 0
+
+    try:
+        dataset = load_cached_dataset()
+    except WmnDatasetError as e:
+        _err(f'cached dataset unusable ({e}); run: obscuralens wmn update')
+        return 1
+    if dataset is None:
+        _err('no cached WhatsMyName dataset; run: obscuralens wmn update')
+        return 1
+
+    if action == 'info':
+        payload = dataset.summary()
+        if fmt == 'json':
+            _emit(json.dumps(payload, indent=2, ensure_ascii=False), output)
+        else:
+            skipped_rows = [[s['name'], s['reason']]
+                            for s in payload['skipped']]
+            sections = [{
+                'title': 'WhatsMyName dataset', 'type': 'grid',
+                'data': {
+                    'Source': payload['source'],
+                    'SHA-256': payload['sha256'],
+                    'Fetched at': payload['fetched_at'] or 'unknown',
+                    'License': payload['license'] or 'see upstream repo',
+                    'Authors': ', '.join(payload['authors'][:6]) +
+                               ('...' if len(payload['authors']) > 6 else ''),
+                    'Sites declared': payload['sites_declared'],
+                    'Sites valid': payload['sites_valid'],
+                    'Sites skipped': payload['sites_skipped'],
+                },
+            }, {
+                'title': 'Categories', 'type': 'table',
+                'columns': ['Category', 'Sites'],
+                'rows': [[c, n] for c, n in payload['categories'].items()],
+            }]
+            if skipped_rows:
+                sections.append({'title': 'Skipped entries', 'type': 'table',
+                                 'columns': ['Name', 'Reason'],
+                                 'rows': skipped_rows})
+            _emit(_render_sections_text(sections), output)
+        return 0
+
+    if action == 'categories':
+        if fmt == 'json':
+            _emit(json.dumps(dataset.categories, indent=2,
+                             ensure_ascii=False), output)
+        else:
+            _emit(_render_sections_text([{
+                'title': 'WhatsMyName categories', 'type': 'table',
+                'columns': ['Category', 'Sites'],
+                'rows': [[c, n] for c, n
+                         in sorted(dataset.categories.items())],
+            }]), output)
+        return 0
+
+    # action == 'check'
+    ok, error = validate_username(args.target)
+    if not ok:
+        _err(error)
+        return 2
+    categories = [c for c in (args.category or '').split(',') if c.strip()]
+    sites = [s for s in (args.sites or '').split(',') if s.strip()]
+    tracker = WmnTracker(dataset, categories=categories or None,
+                         sites=sites or None,
+                         include_protected=args.include_protected)
+    if not tracker.sites:
+        _err('no sites match the given filters; '
+             'see `obscuralens wmn categories`')
+        return 2
+    _info(f"Sweeping {args.target} across {len(tracker.sites)} "
+          f"WhatsMyName sites...")
+    result = tracker.check(args.target, limit=args.limit)
+
+    if fmt == 'json':
+        _emit(json.dumps(result, indent=2, ensure_ascii=False, default=str),
+              output)
+    elif fmt == 'csv':
+        _emit(_csv_from_result('username', result), output)
+    else:
+        _emit(_render_sections_text(_wmn_sections(result)), output)
+    return 0
+
+
 _HANDLERS = {
     'ip': _cmd_ip,
     'phone': _cmd_phone,
@@ -4900,6 +5103,8 @@ _HANDLERS = {
     'alerts': _cmd_alerts,
     # v6.1 commands
     'dorks': _cmd_dorks,
+    # v6.2 commands
+    'wmn': _cmd_wmn,
     # v5.1 desktop beta commands
     'desktop': _cmd_desktop,
     'update': _cmd_update,
