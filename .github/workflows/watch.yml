@@ -9,9 +9,16 @@ permissions:
   contents: read
   issues: write
 
+# One watch run at a time: two overlapping runs (cron + manual dispatch) would
+# both miss the other's state and could double-report the same change.
+concurrency:
+  group: watchlist
+  cancel-in-progress: false
+
 jobs:
   watch:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,25 +34,75 @@ jobs:
           restore-keys: watch-state-
       - name: Run scheduled check
         id: check
+        # Never fail the job here: the script's exit code distinguishes
+        # "changes detected" (1) from real failures (2/3), and its step
+        # outputs (changes/error_count/done) drive every step below. A
+        # non-zero exit alone must never open an issue - that is what
+        # turned the tracker into 25 identical daily issues.
         continue-on-error: true
         run: >
           python scripts/scheduled_check.py
           --targets watch_targets.txt
           --state .watch-state.json
           --report watch-report.json
+          --markdown watch-changes.md
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: watch-report
-          path: watch-report.json
+          path: |
+            watch-report.json
+            watch-changes.md
           if-no-files-found: ignore
-      - name: Open an issue when something changed
-        if: steps.check.outcome == 'failure'
+
+      # --- A real change: one issue, full diff in the body ---------------
+      - name: Ensure watchlist label exists
+        if: steps.check.outputs.changes == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="Watchlist changes detected ($(date -u +%Y-%m-%d))"
-          body="The scheduled ObscuraLens watchlist check detected changes to a watched target. Download the \`watch-report\` artifact from this run for the full diff."
-          gh issue create --title "$title" --body "$body" --label watchlist || \
-            gh issue create --title "$title" --body "$body"
+          gh label create watchlist \
+            --description "Scheduled watchlist change reports" \
+            --color 0e8a16 || true
+      - name: Close the previous open watchlist issue
+        # Keep at most one open report: close the superseded one first
+        # (GitHub's own scheduled-issue tutorial pattern).
+        if: steps.check.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=$(gh issue list --label watchlist --state open \
+            --json number --jq '.[0].number')
+          if [ -n "$previous" ] && [ "$previous" != "null" ]; then
+            gh issue close "$previous" \
+              --comment "Superseded by the latest watchlist change report."
+          fi
+      - name: Open an issue when something changed
+        if: steps.check.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Watchlist changes detected ($(date -u +%Y-%m-%d))" \
+            --body-file watch-changes.md \
+            --label watchlist
+
+      # --- No change, or the check could not run: no issue, loud log ----
+      - name: Report run outcome
+        if: steps.check.outputs.changes != 'true'
+        run: |
+          echo "summary: ${{ steps.check.outputs.summary || 'the check did not finish' }}"
+          echo "failed lookups: ${{ steps.check.outputs.error_count || 'unknown' }}"
+          if [ "${{ steps.check.outputs.error_count || 0 }}" != "0" ]; then
+            echo "::warning::Some watchlist lookups failed (see the watch-report artifact); the successful ones were still diffed."
+          fi
+      - name: Fail loudly on infrastructure errors
+        # A systematically broken check (every lookup failed) or a crash
+        # ('done' is only written when the script finishes) surfaces as a
+        # red run - email plus the Actions tab - never as a duplicate
+        # issue. One or two flaky lookups only raise the warning above.
+        if: steps.check.outputs.done != 'true' || steps.check.outputs.status == 'error'
+        run: |
+          echo "::error::The watchlist check could not complete. Inspect the watch-report artifact for details."
+          exit 1
