@@ -315,7 +315,7 @@ class UpdateChecker:
 
     Args:
         repo: repository slug; defaults to ``OBSCURALENS_REPO_SLUG`` or
-            ``AceGuru-mjh/obscuralens``.
+            ``Ultra-Guru/obscuralens``.
         channel: channel name (or :class:`ReleaseChannel`); defaults to the
             channel declared by the package.
         timeout: per-request timeout in seconds.

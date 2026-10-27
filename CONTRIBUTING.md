@@ -29,7 +29,7 @@ credentials or network behaviour.
 - For the TS SDK: Node 18+ (`sdk-js/` — `bunx --bun tsc` builds it).
 
 ```bash
-git clone https://github.com/AceGuru-mjh/obscuralens.git
+git clone https://github.com/Ultra-Guru/obscuralens.git
 cd obscuralens
 python -m venv venv
 source venv/bin/activate            # Windows: venv\Scripts\Activate.ps1

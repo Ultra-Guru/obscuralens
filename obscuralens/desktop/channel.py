@@ -32,7 +32,7 @@ from .. import __desktop_channel__ as _PACKAGE_CHANNEL
 from .. import __version__
 
 #: GitHub repository that hosts ObscuraLens releases (owner/name).
-DEFAULT_REPO = "AceGuru-mjh/obscuralens"
+DEFAULT_REPO = "Ultra-Guru/obscuralens"
 
 #: Environment variable overriding the repository slug (useful for forks).
 REPO_SLUG_ENV = "OBSCURALENS_REPO_SLUG"
@@ -354,7 +354,7 @@ def download_url(tag: Any, version: Any, platform_key: Any,
     Full ``https`` URL of a release asset, or ``""`` when there is none.
 
     >>> download_url("v5.1.0-beta.1", "5.1.0-beta.1", "win-x64")
-    'https://github.com/AceGuru-mjh/obscuralens/releases/download/v5.1.0-beta.1/ObscuraLens-5.1.0-beta.1-win-x64.exe'
+    'https://github.com/Ultra-Guru/obscuralens/releases/download/v5.1.0-beta.1/ObscuraLens-5.1.0-beta.1-win-x64.exe'
     """
     name = asset_name(version, platform_key)
     clean_tag = str(tag or "").strip()

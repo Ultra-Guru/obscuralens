@@ -39,7 +39,7 @@ DESKTOP_CHANNEL = __desktop_channel__
 DESKTOP_NAME = "ObscuraLens Desktop"
 
 #: Project homepage / release page.
-HOMEPAGE = "https://github.com/AceGuru-mjh/obscuralens"
+HOMEPAGE = "https://github.com/Ultra-Guru/obscuralens"
 
 #: Figlet-style ASCII logo.  Pure ASCII, at most ~64 columns wide so it
 #: fits the default 72-column banner box on a standard terminal.

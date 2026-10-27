@@ -30,7 +30,7 @@ PLUGIN_META = {
     'author': 'ObscuraLens contributors',
     'description': 'Showcase plugin: sources + commands + sections + tools + analytics.',
     'license': 'MIT',
-    'url': 'https://github.com/AceGuru-mjh/ObscuraLens',
+    'url': 'https://github.com/Ultra-Guru/obscuralens',
     'requires_api': 2,
 }
 

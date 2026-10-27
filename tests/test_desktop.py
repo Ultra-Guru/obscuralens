@@ -38,7 +38,7 @@ from obscuralens.desktop import (
     channel as channel_mod,
 )
 
-SLUG = "AceGuru-mjh/obscuralens"
+SLUG = "Ultra-Guru/obscuralens"
 LIST_URL = channel_mod.github_releases_list_url()
 LATEST_URL = channel_mod.github_release_api_url()
 NIGHTLY_URL = channel_mod.github_release_api_url(tag="nightly")

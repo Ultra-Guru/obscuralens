@@ -29,7 +29,7 @@ PLUGIN_META = {
     'author': 'ObscuraLens contributors',
     'description': 'Demo plugin commands (hello, db-peek) using PluginContext.',
     'license': 'MIT',
-    'url': 'https://github.com/AceGuru-mjh/ObscuraLens',
+    'url': 'https://github.com/Ultra-Guru/obscuralens',
     'requires_api': 2,
 }
 

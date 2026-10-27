@@ -73,8 +73,8 @@ obscuralens = "obscuralens.cli:main"
 obscuralens-desktop = "obscuralens.desktop.launcher:main"
 
 [project.urls]
-Homepage = "https://github.com/AceGuru-mjh/obscuralens"
-Repository = "https://github.com/AceGuru-mjh/obscuralens"
+Homepage = "https://github.com/Ultra-Guru/obscuralens"
+Repository = "https://github.com/Ultra-Guru/obscuralens"
 
 [tool.setuptools.packages.find]
 include = ["obscuralens*"]
