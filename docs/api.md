@@ -99,6 +99,38 @@ Response shape: the tracker envelope plus a `risk` block
 `{"score": 0-100, "verdict", "signals": [{"id", "weight", "detail"}], "summary"}`.
 Verdict bands: `clean` / `low` / `medium` / `high` / `critical`.
 
+### `GET /api/rules/packs` *(v6.3)*
+
+Offline inventory of the shipped explainable YAML rule packs:
+
+```bash
+curl http://127.0.0.1:8000/api/rules/packs
+```
+
+Response shape:
+`{"packs": [{"kind", "name", "description", "version", "rules", "severities"}], "total_packs", "total_rules"}`
+— 21 packs, 224 rules as shipped. Use it to discover which kinds carry
+rule coverage before evaluating.
+
+### `GET /api/rules/{kind}/{target}` *(v6.3)*
+
+Runs a lookup and attaches the rule-pack evaluation — the kind's pack
+plus the always-evaluated `shared` pack:
+
+```bash
+curl http://127.0.0.1:8000/api/rules/ip/203.0.113.10
+```
+
+Response shape: the tracker envelope plus a `rules` block
+`{"kind", "score": 0-100, "band", "hits": [{"id", "title", "description", "severity", "weight", "score", "tags", "references", "explanations"}]}`.
+Bands: `clean` (0-9) / `watch` (10-29) / `elevated` (30-59) /
+`high` (60-79) / `critical` (80-100).
+
+Where `/api/risk/...` returns weighted signals computed in code, this
+returns matches against analyst-editable YAML, and every hit lists the
+conditions that fired against the real field values. Unknown kinds and
+invalid targets return `400`. See [docs/rules.md](rules.md).
+
 ## Platform management (v5.0)
 
 ### `GET /api/kinds`

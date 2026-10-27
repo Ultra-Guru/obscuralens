@@ -29,6 +29,8 @@ TOOL_NAMES = {
     'analytics_history',
     # v6.1 tools
     'tools_dorks',
+    # v6.3 rule-pack tools
+    'rules_packs', 'rules_evaluate',
     # v6.0 part 4: automation & sharing tools
     'notify_channels', 'notify_broadcast', 'automation_tasks',
     'automation_run_due', 'export_stix',
@@ -110,7 +112,10 @@ def test_tools_list_contains_all_tools_with_valid_schemas():
                           'export_misp', 'analytics_clusters',
                           'analytics_trend', 'analytics_forecast',
                           'history_search', 'watch_remove', 'case_list',
-                          'case_create', 'data_pack_lookup')
+                          'case_create', 'data_pack_lookup',
+                          # v6.3 rule tools take no target (or
+                          # kind/data instead)
+                          'rules_packs', 'rules_evaluate')
     for tool in tools:
         assert isinstance(tool['description'], str) and tool['description']
         schema = tool['inputSchema']
@@ -225,7 +230,7 @@ def test_main_end_to_end(monkeypatch):
     assert len(out_lines) == 2
     first, second = json.loads(out_lines[0]), json.loads(out_lines[1])
     assert first['result']['serverInfo']['name'] == 'obscuralens'
-    assert len(second['result']['tools']) == 63  # 18 builtin-dispatched + 45 registry tools
+    assert len(second['result']['tools']) == 65  # 18 builtin-dispatched + 47 registry tools
 
 
 # --------------------------------------------------------------------------- #
@@ -845,16 +850,16 @@ class TestEcosystemRoundTrips:
 
 
 class TestEcosystemRegistry:
-    """TOOLS/_HANDLERS consistency for the 63-tool surface."""
+    """TOOLS/_HANDLERS consistency for the 65-tool surface."""
 
-    def test_tools_list_contains_all_63_names(self):
+    def test_tools_list_contains_all_65_names(self):
         tools = handle_request(_request('tools/list'))['result']['tools']
-        assert len(tools) == 63
+        assert len(tools) == 65
         assert {tool['name'] for tool in tools} == TOOL_NAMES
 
     def test_handlers_registry_matches_registry_dispatched_tools(self):
         names = {tool['name'] for tool in mcp_server.TOOLS}
-        assert len(names) == 63
+        assert len(names) == 65
         assert set(mcp_server._HANDLERS) == names - BUILTIN_TOOLS
         assert not set(mcp_server._HANDLERS) & BUILTIN_TOOLS
         # Registry order follows the TOOLS advertisement order.

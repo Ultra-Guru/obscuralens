@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "obscuralens"
-version = "6.2.0"
+version = "6.3.0"
 description = "Multi-source OSINT console and investigation platform for 20 target kinds with a built-in web UI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -34,7 +34,13 @@ dependencies = [
     "matplotlib>=3.6.0",
     "numpy>=1.23.0",
     "wordcloud>=1.8.0",
-    "reportlab>=3.6.0",
+    # reportlab 5.1.0 raises ImportError on Python 3.9 (it bumped its
+    # internal __min_python_version__ to 3.10) while its packaging
+    # metadata still advertises requires_python>=3.9, so pip installs
+    # it on 3.9 and every PDF path then reports "not installed".
+    # Cap it there until the floor rises past 3.9.
+    "reportlab>=3.6.0,<5.1.0; python_version < '3.10'",
+    "reportlab>=3.6.0; python_version >= '3.10'",
 ]
 
 [project.optional-dependencies]

@@ -57,6 +57,7 @@ from .models import (
     NotifyDelivery,
     PairComparison,
     RiskReport,
+    RuleReport,
     SourceHealthEntry,
     StatsSummary,
     StixBundle,
@@ -668,6 +669,39 @@ class AsyncObscuraLensClient:
             >>> report = await client.risk("domain", "example.com")   # doctest: +SKIP
         """
         return await self._run(self._client.risk, kind, target)
+
+    async def rules(self, kind: str, target: str) -> RuleReport:
+        """
+        Run a lookup with explainable YAML rule-pack findings attached.
+
+        Args:
+            kind: tracker kind.
+            target: the indicator value.
+
+        Returns:
+            A :class:`~obscuralens.sdk.models.RuleReport` — score, band,
+            self-explaining hits and the underlying lookup envelope.
+
+        Raises:
+            ValueError: unknown kind.
+            BadRequestError: invalid target.
+
+        Example:
+            >>> report = await client.rules("ip", "1.1.1.1")   # doctest: +SKIP
+        """
+        return await self._run(self._client.rules, kind, target)
+
+    async def rule_packs(self) -> Dict[str, Any]:
+        """
+        Inventory of the shipped rule packs.
+
+        Returns:
+            ``{'packs': [...], 'total_packs', 'total_rules'}``.
+
+        Example:
+            >>> packs = await client.rule_packs()             # doctest: +SKIP
+        """
+        return await self._run(self._client.rule_packs)
 
     async def timeline(self, target: Optional[str] = None,
                        limit: int = 100) -> Timeline:

@@ -262,46 +262,89 @@ Resolution rules:
   in your overriding pack file; evaluation skips it while the rule stays
   visible (and auditable) in the YAML.
 
-## Integration point (what exists today, honestly)
+## Using the rule packs (v6.3)
 
-As of 5.1.0-beta.1 the rule engine is a **public library API**:
-`obscuralens.rules` is importable, tested and documented, but no CLI
-command, REST endpoint or shipped report template consumes it yet. The
-risk blocks you see in `obscuralens risk`, `/api/risk/...` and the HTML
-report builder still come from the built-in correlation risk engine;
-rule packs are the complementary, analyst-editable layer you consume
-programmatically.
+Since v6.3 the rule engine is wired into every product surface. The same
+`RuleEvaluation` powers all of them, so the score, band and hit list are
+identical whichever way you reach it.
 
-The two real pieces that compose cleanly are `RuleEvaluation.to_dict()`
-(the JSON-friendly hit/score/band mapping, built for exactly this) and
-the v5.1 report renderer
-(`obscuralens.reporting.template_render.render_markdown_report` /
-`render_standalone_html_report`, documented in
-[docs/v5.1.md](v5.1.md)). Wiring them together is a few lines:
+### CLI
 
-```python
-from obscuralens.rules import evaluate_rules
-from obscuralens.reporting.template_render import render_markdown_report
-
-evaluation = evaluate_rules('domain', lookup_payload)
-sections = [{
-    'title': 'Rule pack findings ({0}, score {1}, {2})'.format(
-        evaluation.kind, evaluation.score, evaluation.band),
-    'rows': [[h['id'], h['title'], h['severity'], str(h['weight'])]
-             for h in evaluation.to_dict()['hits']],
-    'notes': '\n'.join(
-        '{0}: {1}'.format(h['id'], ' | '.join(h['explanations']))
-        for h in evaluation.to_dict()['hits']),
-}]
-markdown = render_markdown_report(sections, {'target': 'example.com',
-                                              'kind': 'domain'})
+```console
+$ obscuralens rules --list                 # inventory every shipped pack
+$ obscuralens rules ip 203.0.113.10        # run a lookup, evaluate the packs
+$ obscuralens rules domain example.com -f json
+$ obscuralens ip 203.0.113.10 --rules      # attach findings to a normal lookup
 ```
 
-When a first-class integration lands (a `--rules` flag on `risk`, an API
-block, a report section), it will follow the same shapes -- the dict
-contract is stable -- and this section will grow the command-level
-documentation. Until then: the engine is stable, the packs are data, and
-your pipelines can call `evaluate_rules` exactly as above.
+`rules --list` prints each pack with its rule count and severity mix;
+`rules <kind> <target>` runs the lookup, evaluates the kind pack plus the
+always-on `shared` pack, and prints three sections — the score/band
+summary, the rules that fired, and the per-condition explanations. The
+`--rules` flag works on **every** lookup command, adding a `rules` block
+to JSON output and a findings section to table output.
+
+### REST API
+
+```console
+$ curl localhost:8000/api/rules/packs
+{"packs": [...], "total_packs": 21, "total_rules": 224}
+
+$ curl localhost:8000/api/rules/ip/203.0.113.10
+{..., "rules": {"kind": "ip", "score": 85, "band": "critical", "hits": [...]}}
+```
+
+`GET /api/rules/packs` is the offline pack inventory. `GET
+/api/rules/{kind}/{target}` runs the lookup and attaches the evaluation
+under `rules`, mirroring how `/api/risk/...` attaches `risk`. Unknown
+kinds and invalid targets return `400`.
+
+### MCP
+
+Two tools, both offline:
+
+- `rules_packs` — the pack inventory, so an agent can discover coverage.
+- `rules_evaluate` — takes `kind` and `data` (a full tracker report *or*
+  a flat field dict) and returns the scored, self-explaining hits. It
+  evaluates data you supply and never performs a lookup, so an agent can
+  look up once and score many times.
+
+### SDK
+
+```python
+from obscuralens.sdk import ObscuraLensClient
+
+client = ObscuraLensClient()
+report = client.rules('ip', '203.0.113.10')
+report.score, report.band        # 85, 'critical'
+report.matched_ids()             # ['IP-003', 'IP-001', ...]
+report.by_severity('critical')   # [RuleHitModel(...), ...]
+report.explain()                 # ['IP-003 [critical] ... (+35): ...']
+
+client.rule_packs()['total_rules']   # 224
+```
+
+`AsyncObscuraLensClient` mirrors both methods. The models are
+`RuleReport` and `RuleHitModel`.
+
+### Library
+
+The original library API is unchanged and still the lowest-level entry
+point; `evaluate_payload` is the convenience the surfaces above share:
+
+```python
+from obscuralens.rules import evaluate_payload, rule_sections
+
+evaluation = evaluate_payload('domain', lookup_payload)   # envelope or flat
+sections = rule_sections(evaluation)                      # report-ready
+```
+
+`evaluate_payload` flattens a tracker envelope (`{'info': {...}}`) before
+evaluating, and returns an empty evaluation for a non-mapping payload —
+"no data collected" is never scored into a risk band. `rule_sections`
+emits the same section shapes as the built-in risk engine, so rule
+findings render through the existing text, Markdown and HTML paths with
+no template changes.
 
 See [docs/data-packs.md](data-packs.md) for the offline packs that
 `known_pack` conditions read, [docs/advanced.md](advanced.md) for the

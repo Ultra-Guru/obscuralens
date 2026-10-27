@@ -193,6 +193,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help='disable ANSI colours')
         p.add_argument('--risk', action='store_true',
                        help='attach heuristic risk scoring (v4.0)')
+        p.add_argument('--rules', action='store_true',
+                       help='attach explainable YAML rule-pack findings '
+                            '(v6.3)')
         p.add_argument('--template', nargs='?', const='list', metavar='NAME',
                        help='render through a shipped Jinja report template '
                             'instead of the built-in formatter; a bare '
@@ -496,6 +499,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_risk.add_argument('kind', choices=KINDS)
     p_risk.add_argument('target')
     add_common(p_risk)
+
+    # -- v6.3 rule-pack evaluation -------------------------------------------
+
+    p_rules = sub.add_parser(
+        'rules',
+        help='evaluate the explainable YAML rule packs against a target '
+             '(v6.3)')
+    p_rules.add_argument('kind', nargs='?', choices=KINDS,
+                         help='target kind (omit with --list)')
+    p_rules.add_argument('target', nargs='?',
+                         help='value to evaluate (omit with --list)')
+    p_rules.add_argument('--list', action='store_true', dest='list_packs',
+                         help='list the shipped rule packs and exit')
+    add_common(p_rules)
 
     # -- v6.1 dork builder ----------------------------------------------------
 
@@ -1224,7 +1241,42 @@ def _extra_sections(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     confidence = result.get('confidence')
     if isinstance(confidence, dict) and confidence.get('fields_scored'):
         extra.extend(_confidence_sections(confidence))
+    # v6.3: rule-pack findings (only when --rules attached them).
+    rules = result.get('rules')
+    if isinstance(rules, dict) and rules.get('hits') is not None:
+        extra.extend(_rules_sections_from_dict(rules))
     return extra
+
+
+def _rules_sections_from_dict(rules: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Report sections for an attached rule-pack block (v6.3).
+
+    Renders from the serialised ``RuleEvaluation.to_dict()`` mapping that
+    ``--rules`` stores on the result, so the same rows appear whether the
+    caller came through the CLI, a stored payload or the REST API.
+    """
+    hits = rules.get('hits') or []
+    sections: List[Dict[str, Any]] = [{
+        'title': 'RULE PACK FINDINGS',
+        'type': 'keyval',
+        'rows': [
+            ['Score', f"{rules.get('score', 0)}/100"],
+            ['Band', str(rules.get('band', 'clean'))],
+            ['Pack', str(rules.get('kind', '') or 'target')],
+            ['Rules matched', str(len(hits))],
+        ],
+    }]
+    if hits:
+        sections.append({
+            'title': 'MATCHED RULES',
+            'type': 'table',
+            'columns': ['Rule', 'Title', 'Severity', 'Weight'],
+            'rows': [[hit.get('id', ''), hit.get('title', ''),
+                      hit.get('severity', ''), hit.get('weight', 0)]
+                     for hit in hits],
+        })
+    return sections
 
 
 def _confidence_sections(confidence: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1277,6 +1329,14 @@ def _run_lookup(args: argparse.Namespace, kind: str, target: str,
             attach_risk(kind, result)
         except ImportError:
             _info('risk scoring unavailable (correlation package missing)')
+    # v6.3: explainable rule-pack findings, opt-in via --rules. Additive and
+    # never fatal - a rule layer must not be why a lookup fails.
+    if getattr(args, 'rules', False):
+        try:
+            from .rules import evaluate_payload
+            result['rules'] = evaluate_payload(kind, result).to_dict()
+        except Exception:
+            _info('rule evaluation unavailable (rules package missing)')
     _emit_result(args, kind, result, title)
     if result.get('success'):
         if result.get('sources_failed'):
@@ -2370,6 +2430,67 @@ def _cmd_risk(args: argparse.Namespace) -> int:
               args.output)
     else:
         _emit(_render_sections_text(risk_sections(risk)), args.output)
+    return 0
+
+
+def _cmd_rules(args: argparse.Namespace) -> int:
+    """`obscuralens rules <kind> <target>` / `rules --list` (v6.3)."""
+    from .rules import evaluate_payload, packs_catalog, rule_sections
+
+    fmt = args.format or 'table'
+
+    if getattr(args, 'list_packs', False) or not args.kind:
+        catalog = packs_catalog()
+        if fmt == 'json':
+            _emit(json.dumps(catalog, indent=2, ensure_ascii=False,
+                             default=str), args.output)
+            return 0
+        sections = [{
+            'title': 'Rule Packs',
+            'type': 'table',
+            'columns': ['Kind', 'Pack', 'Version', 'Rules', 'Severities'],
+            'rows': [[
+                entry['kind'], entry['name'], entry['version'],
+                entry['rules'],
+                ', '.join(f'{count} {severity}'
+                          for severity, count in entry['severities'].items()),
+            ] for entry in catalog['packs']],
+        }, {
+            'title': 'Totals',
+            'type': 'grid',
+            'data': {
+                'Packs': str(catalog['total_packs']),
+                'Rules': str(catalog['total_rules']),
+            },
+        }]
+        _emit(_render_sections_text(sections), args.output)
+        return 0
+
+    if not args.target:
+        _err('rules needs a target (or use --list)')
+        return 2
+
+    validator = _validator(args.kind)
+    if validator:
+        ok, error = validator(args.target)
+        if not ok:
+            _err(error)
+            return 2
+
+    _info(f'Evaluating rule packs for {args.target} ...')
+    result = _tracker(args.kind).track(args.target)
+    if not result.get('info'):
+        _err('no data collected - cannot evaluate rules')
+        return 1
+
+    evaluation = evaluate_payload(args.kind, result)
+    if fmt == 'json':
+        payload = dict(result)
+        payload['rules'] = evaluation.to_dict()
+        _emit(json.dumps(payload, indent=2, ensure_ascii=False, default=str),
+              args.output)
+    else:
+        _emit(_render_sections_text(rule_sections(evaluation)), args.output)
     return 0
 
 
@@ -4884,6 +5005,7 @@ _HANDLERS = {
     'mcp': _cmd_mcp,
     # v4.0 commands
     'risk': _cmd_risk,
+    'rules': _cmd_rules,
     'timeline': _cmd_timeline,
     'correlate': _cmd_correlate,
     'diff': _cmd_diff,

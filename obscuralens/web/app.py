@@ -661,6 +661,29 @@ def create_app():
             return _failure_payload(kind, target,
                                     f"{type(exc).__name__}: {exc}")
 
+    @app.get('/api/rules/packs')
+    def api_rules_packs() -> Dict[str, Any]:
+        """Inventory of every shipped YAML rule pack (v6.3)."""
+        from ..rules import packs_catalog
+        return packs_catalog()
+
+    @app.get('/api/rules/{kind}/{target}')
+    def api_rules(kind: str, target: str) -> Dict[str, Any]:
+        """Run a lookup and attach explainable rule-pack findings (v6.3)."""
+        from ..rules import evaluate_payload
+        if kind not in KINDS:
+            raise HTTPException(status_code=400, detail='unknown kind')
+        ok, error = _VALIDATORS[kind](target)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        try:
+            result = _TRACKERS[kind]().track(target)
+            result['rules'] = evaluate_payload(kind, result).to_dict()
+            return result
+        except Exception as exc:
+            return _failure_payload(kind, target,
+                                    f"{type(exc).__name__}: {exc}")
+
     @app.get('/api/timeline')
     def api_timeline(target: Optional[str] = None,
                      limit: int = 100) -> Dict[str, Any]:

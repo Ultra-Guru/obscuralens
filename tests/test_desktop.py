@@ -38,6 +38,21 @@ from obscuralens.desktop import (
     channel as channel_mod,
 )
 
+
+def _next_version(version=PACKAGE_VERSION):
+    """
+    A version strictly newer than ``version`` (minor bump).
+
+    Derived from the package version rather than hardcoded so a release
+    bump cannot silently invert the ``is_newer`` assertions below.
+    """
+    parts = (version.split('-')[0].split('.') + ['0', '0'])[:3]
+    major, minor = int(parts[0]), int(parts[1])
+    return '{0}.{1}.0'.format(major, minor + 1)
+
+
+NEXT_VERSION = _next_version()
+
 SLUG = "AceGuru-mjh/obscuralens"
 LIST_URL = channel_mod.github_releases_list_url()
 LATEST_URL = channel_mod.github_release_api_url()
@@ -546,24 +561,26 @@ class TestUpdateChecker:
 
     def test_check_beta_newer(self):
         key = current_platform_key()
-        matching = "ObscuraLens-6.3.0-beta.1-{0}".format(key)
+        beta = "{0}-beta.1".format(NEXT_VERSION)
+        matching = "ObscuraLens-{0}-{1}".format(beta, key)
+        windows_asset = "ObscuraLens-{0}-win-x64.exe".format(beta)
         release = make_release(
-            "v6.3.0-beta.1",
+            "v{0}".format(beta),
             prerelease=True,
-            assets=[matching, "ObscuraLens-6.3.0-beta.1-win-x64.exe"],
+            assets=[matching, windows_asset],
         )
         fetcher = FakeFetch({LIST_URL: (200, json.dumps([release]))})
         checker = UpdateChecker(fetch=fetcher)
         info = checker.check()
         assert info is not None
         assert info.is_newer is True
-        assert info.latest_tag == "v6.3.0-beta.1"
-        assert info.latest_version == "6.3.0-beta.1"
+        assert info.latest_tag == "v{0}".format(beta)
+        assert info.latest_version == beta
         assert info.channel == "beta"
         assert info.is_prerelease is True
         assert info.download_url.endswith(matching)
         assert matching in info.asset_names
-        assert "ObscuraLens-6.3.0-beta.1-win-x64.exe" in info.asset_names
+        assert windows_asset in info.asset_names
         assert checker.last_error == ""
         assert fetcher.calls and fetcher.calls[0][0] == LIST_URL
 
@@ -599,7 +616,7 @@ class TestUpdateChecker:
         assert checker.last_error
 
     def test_check_stable_uses_latest_endpoint(self):
-        release = make_release("v6.3.0")
+        release = make_release("v{0}".format(NEXT_VERSION))
         fetcher = FakeFetch({LATEST_URL: (200, json.dumps(release))})
         checker = UpdateChecker(channel="stable", fetch=fetcher)
         info = checker.check()
@@ -742,7 +759,8 @@ class TestUpdateChecker:
         assert "beta" in text
 
     def test_check_for_updates_with_injected_fetch(self):
-        release = make_release("v6.3.0-beta.1", prerelease=True)
+        release = make_release(
+            "v{0}-beta.1".format(NEXT_VERSION), prerelease=True)
         fetcher = FakeFetch({LIST_URL: (200, json.dumps([release]))})
         info = updater.check_for_updates(fetch=fetcher)
         assert info is not None
