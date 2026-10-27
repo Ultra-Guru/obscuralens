@@ -124,9 +124,9 @@ export interface ClientOptions {
   baseUrl?: string;
   /**
    * Optional session API key sent as an `X-API-Key` header on every request.
-   * The stock server ignores it (no built-in auth), but authenticating
-   * reverse proxies and the `OBSCURALENS_API_KEY` deployment pattern honour
-   * it. Leave `undefined` for a plain local server.
+   * Use the server's `OBSCURALENS_WEB_TOKEN` value for native authentication;
+   * authenticating reverse proxies honour the same contract. Leave
+   * `undefined` for a plain local server.
    */
   apiKey?: string;
   /**

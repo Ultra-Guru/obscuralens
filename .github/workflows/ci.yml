@@ -103,8 +103,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: TypeScript SDK tests (node:test, offline)
-        run: node --test sdk-js/test/client.test.mjs sdk-js/test/session.test.mjs sdk-js/test/errors.test.mjs
+      - name: TypeScript SDK + browser client tests (node:test, offline)
+        run: |
+          node --test sdk-js/test/client.test.mjs sdk-js/test/session.test.mjs sdk-js/test/errors.test.mjs
+          node --test tests/js/web-api.test.mjs tests/js/web-sse.test.mjs tests/js/web-main.test.mjs
 
   docker:
     runs-on: ubuntu-latest

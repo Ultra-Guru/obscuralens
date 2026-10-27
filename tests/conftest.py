@@ -22,6 +22,8 @@ os.environ['OBSCURALENS_CACHE_ENABLED'] = '0'
 os.environ['OBSCURALENS_REQUESTS_PER_SECOND'] = '0'
 os.environ['OBSCURALENS_SAVE_HISTORY'] = '1'
 os.environ['NO_COLOR'] = '1'
+# A developer's real server credential must never change unit-test behaviour.
+os.environ.pop('OBSCURALENS_WEB_TOKEN', None)
 
 # Make the project root importable when running pytest from elsewhere.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

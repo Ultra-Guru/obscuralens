@@ -28,8 +28,12 @@ All endpoints return JSON unless documented otherwise; errors are plain
 
 import asyncio
 import contextlib
+import ipaddress
 import json
+import os
+import secrets
 import threading
+import time
 from dataclasses import fields as dataclass_fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -170,7 +174,7 @@ _KIND_INFO: Dict[str, Dict[str, str]] = {
     'email': {'label': 'Email', 'example': 'user@example.com',
               'blurb': 'Breach exposure, reputation, linked profiles'},
     'username': {'label': 'Username', 'example': 'johndoe',
-                 'blurb': '45 platforms, honest 3-state verdicts'},
+                 'blurb': '112 platforms, honest 3-state verdicts'},
     'phone': {'label': 'Phone', 'example': '+14155552671',
               'blurb': 'E.164 formatting, carrier hints, geo enrichment'},
     'url': {'label': 'URL', 'example': 'https://example.com/page',
@@ -244,8 +248,105 @@ MAX_BATCH_TARGETS = 25
 #: Heartbeat interval for the SSE stream (seconds).
 STREAM_HEARTBEAT_S = 15.0
 
+#: Environment variable holding the optional web/API bearer token. It is
+#: deliberately read when an app/server is built, not at import time.
+WEB_TOKEN_ENV = 'OBSCURALENS_WEB_TOKEN'
+
+#: Short lifetime for the one-time tickets used by browser EventSource.
+#: Native EventSource cannot send Authorization headers; a ticket avoids
+#: placing the long-lived API token in a URL, access log or browser history.
+STREAM_TICKET_TTL_S = 30.0
+STREAM_TICKET_CAPACITY = 128
+
+#: Hosts accepted for an unauthenticated loopback-only server. Restricting
+#: the Host header also blocks DNS-rebinding access from a malicious site.
+LOOPBACK_HOSTS = ('127.0.0.1', 'localhost', '::1')
+
 #: Topics a client declared via POST /api/stream/subscribe (empty = all).
 _STREAM_TOPICS: frozenset = frozenset()
+
+
+def _web_token(value: Optional[str] = None) -> str:
+    """Resolve an explicit token or ``OBSCURALENS_WEB_TOKEN`` safely."""
+    raw = os.environ.get(WEB_TOKEN_ENV, '') if value is None else value
+    return str(raw or '').strip()
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Whether a bind address is local-only (including IPv6 loopback)."""
+    value = str(host or '').strip().strip('[]').lower()
+    if value == 'localhost':
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+def _ensure_secure_bind(host: str, token: str = '',
+                        allow_unauthenticated: bool = False) -> None:
+    """Fail closed before exposing an unauthenticated API beyond loopback."""
+    if (_is_loopback_host(host) or token or allow_unauthenticated):
+        return
+    raise ValueError(
+        f"refusing to expose the unauthenticated web API on {host!r}; "
+        f"set {WEB_TOKEN_ENV} to a long random token, or explicitly pass "
+        "--allow-unauthenticated after adding an authenticating reverse proxy"
+    )
+
+
+def _bearer_token(authorization: str) -> str:
+    """Extract an RFC 6750 bearer credential; anything else returns ''."""
+    scheme, separator, credential = str(authorization or '').partition(' ')
+    if not separator or scheme.lower() != 'bearer':
+        return ''
+    return credential.strip()
+
+
+def _tokens_match(candidate: str, expected: str) -> bool:
+    """Constant-time comparison that also supports non-ASCII secrets."""
+    if not candidate or not expected:
+        return False
+    return secrets.compare_digest(
+        candidate.encode('utf-8'), expected.encode('utf-8'))
+
+
+class _StreamTicketStore:
+    """Bounded, expiring, single-use tickets for authenticated SSE clients."""
+
+    def __init__(self, ttl: float = STREAM_TICKET_TTL_S,
+                 capacity: int = STREAM_TICKET_CAPACITY,
+                 clock: Callable[[], float] = time.monotonic):
+        self.ttl = max(1.0, float(ttl))
+        self.capacity = max(1, int(capacity))
+        self._clock = clock
+        self._tickets: Dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def _prune(self, now: float) -> None:
+        expired = [ticket for ticket, deadline in self._tickets.items()
+                   if deadline <= now]
+        for ticket in expired:
+            self._tickets.pop(ticket, None)
+
+    def issue(self) -> str:
+        """Create a ticket; old tickets are evicted at the hard capacity."""
+        with self._lock:
+            now = self._clock()
+            self._prune(now)
+            while len(self._tickets) >= self.capacity:
+                self._tickets.pop(next(iter(self._tickets)))
+            ticket = secrets.token_urlsafe(32)
+            self._tickets[ticket] = now + self.ttl
+            return ticket
+
+    def consume(self, ticket: str) -> bool:
+        """Consume exactly once and reject missing or expired tickets."""
+        if not ticket:
+            return False
+        with self._lock:
+            deadline = self._tickets.pop(str(ticket), None)
+            return deadline is not None and deadline > self._clock()
 
 
 class _EventBus:
@@ -542,19 +643,35 @@ def _source_catalogs() -> Dict[str, Dict[str, str]]:
     return catalogs
 
 
-def create_app():
+def create_app(api_token: Optional[str] = None,
+               allowed_hosts: Optional[List[str]] = None):
     """
     Build the ObscuraLens FastAPI application.
 
     FastAPI is imported here rather than at module import time so the rest of
-    the package does not depend on the optional ``web`` extra.
+    the package does not depend on the optional ``web`` extra. When
+    ``api_token`` (or :data:`WEB_TOKEN_ENV`) is set, every API endpoint except
+    the liveness probe requires ``Authorization: Bearer <token>`` (or the
+    SDK-compatible ``X-API-Key``). Browser SSE clients exchange that
+    credential for a one-time stream ticket.
+
+    Args:
+        api_token: explicit bearer token; ``None`` reads the environment.
+        allowed_hosts: optional Host-header allowlist (DNS-rebinding guard).
 
     Raises:
         ImportError: if FastAPI is not installed, with an install hint.
     """
     try:
-        from fastapi import FastAPI, HTTPException, UploadFile
-        from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+        from fastapi import FastAPI, HTTPException, Request, UploadFile
+        from fastapi.middleware.trustedhost import TrustedHostMiddleware
+        from fastapi.openapi.utils import get_openapi
+        from fastapi.responses import (
+            FileResponse,
+            HTMLResponse,
+            JSONResponse,
+            StreamingResponse,
+        )
         from fastapi.staticfiles import StaticFiles
     except ImportError as exc:  # pragma: no cover - depends on environment
         raise ImportError(
@@ -562,6 +679,8 @@ def create_app():
             'Install it with: pip install "obscuralens[web]"'
         ) from exc
 
+    token = _web_token(api_token)
+    stream_tickets = _StreamTicketStore()
     app = FastAPI(
         title='ObscuraLens',
         version=__version__,
@@ -569,6 +688,91 @@ def create_app():
                     '(20 target kinds, analyst toolbox, dork builder, '
                     'evidence confidence, local file analysis).',
     )
+    if allowed_hosts:
+        app.add_middleware(TrustedHostMiddleware,
+                           allowed_hosts=list(allowed_hosts))
+
+    @app.middleware('http')
+    async def web_security(request: Request, call_next: Callable) -> Any:
+        """Authenticate sensitive routes and apply browser safety headers."""
+        path = request.url.path
+        protected = bool(token and path.startswith('/api/')
+                         and path != '/api/health')
+        if protected:
+            candidate = _bearer_token(request.headers.get('authorization', ''))
+            # Bearer is the browser/OpenAPI standard; X-API-Key keeps both
+            # shipped SDKs and existing authenticating-proxy deployments
+            # wire-compatible. Neither credential is ever URL-accepted.
+            authenticated = (
+                _tokens_match(candidate, token)
+                or _tokens_match(request.headers.get('x-api-key', ''), token)
+            )
+            # A ticket is scoped to this one SSE request and is consumed even
+            # if the subsequent connection fails. It never authorizes other
+            # API endpoints, and the long-lived token is never URL-accepted.
+            if (not authenticated and path == '/api/stream'):
+                authenticated = stream_tickets.consume(
+                    request.query_params.get('ticket', ''))
+            if not authenticated:
+                response = JSONResponse(
+                    status_code=401,
+                    content={'detail': 'authentication required'},
+                    headers={'WWW-Authenticate': 'Bearer'},
+                )
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
+
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Permissions-Policy'] = (
+            'camera=(), microphone=(), geolocation=()')
+        response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+        if path.startswith('/api/'):
+            # Investigation data, settings and key status must not be stored
+            # by browser/proxy caches. This also disables SSE buffering caches.
+            response.headers['Cache-Control'] = 'no-store'
+        if path == '/':
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; connect-src 'self'; "
+                "font-src 'self'; object-src 'none'; base-uri 'none'; "
+                "frame-ancestors 'none'; form-action 'self'")
+        return response
+
+    if token:
+        # Make the middleware's bearer contract discoverable in Swagger UI.
+        # Health remains public; all other API operations show Authorize.
+        def secured_openapi() -> Dict[str, Any]:
+            if app.openapi_schema:
+                return app.openapi_schema
+            schema = get_openapi(
+                title=app.title, version=app.version,
+                description=app.description, routes=app.routes)
+            schemes = schema.setdefault('components', {}).setdefault(
+                'securitySchemes', {})
+            schemes['bearerAuth'] = {
+                'type': 'http', 'scheme': 'bearer',
+                'bearerFormat': WEB_TOKEN_ENV,
+            }
+            schemes['apiKeyAuth'] = {
+                'type': 'apiKey', 'in': 'header', 'name': 'X-API-Key',
+            }
+            for route_path, operations in schema.get('paths', {}).items():
+                if not route_path.startswith('/api/') or route_path == '/api/health':
+                    continue
+                for method, operation in operations.items():
+                    if method.lower() in {'get', 'post', 'put', 'patch',
+                                          'delete', 'options', 'head'}:
+                        operation['security'] = [
+                            {'bearerAuth': []}, {'apiKeyAuth': []}]
+            app.openapi_schema = schema
+            return schema
+
+        app.openapi = secured_openapi
 
     # ------------------------------------------------------------------
     # Static SPA
@@ -594,8 +798,12 @@ def create_app():
 
     @app.get('/api/health')
     def api_health() -> Dict[str, Any]:
-        """Liveness probe with the package version."""
-        return {'status': 'ok', 'version': __version__}
+        """Public liveness probe; never exposes the configured token."""
+        return {
+            'status': 'ok',
+            'version': __version__,
+            'authentication_required': bool(token),
+        }
 
     @app.get('/api/lookup/{kind}/{target}')
     def api_lookup(kind: str, target: str) -> Dict[str, Any]:
@@ -1581,6 +1789,20 @@ def create_app():
     # Live stream + aggregation views (v6.0 part 3)
     # ------------------------------------------------------------------
 
+    @app.post('/api/stream/ticket')
+    def api_stream_ticket() -> Dict[str, Any]:
+        """Issue a short-lived, single-use ticket for native EventSource.
+
+        This endpoint itself requires the normal bearer credential whenever
+        authentication is enabled. The returned ticket works only for one
+        ``GET /api/stream`` request and expires after 30 seconds.
+        """
+        return {
+            'ticket': stream_tickets.issue(),
+            'expires_in': int(STREAM_TICKET_TTL_S),
+            'token_type': 'single-use stream ticket',
+        }
+
     @app.get('/api/stream')
     async def api_stream(max_events: Optional[int] = None,
                          heartbeat_ms: Optional[int] = None,
@@ -2127,7 +2349,9 @@ def _coerce_setting(current: Any, raw: Any) -> Any:
 
 
 def serve(host: str = '127.0.0.1', port: int = 8000,
-          reload: bool = False, open_browser: bool = False) -> None:
+          reload: bool = False, open_browser: bool = False,
+          api_token: Optional[str] = None,
+          allow_unauthenticated: bool = False) -> None:
     """
     Run the web UI with uvicorn.
 
@@ -2136,9 +2360,13 @@ def serve(host: str = '127.0.0.1', port: int = 8000,
         port: TCP port to listen on
         reload: enable uvicorn's auto-reloader for development
         open_browser: open the default browser shortly after startup
+        api_token: explicit bearer token; ``None`` reads ``WEB_TOKEN_ENV``
+        allow_unauthenticated: explicit override for non-loopback binding,
+            intended only behind a separately authenticating reverse proxy
 
     Raises:
         ImportError: if uvicorn is not installed, with an install hint.
+        ValueError: if a non-loopback bind would expose an open API.
     """
     try:
         import uvicorn
@@ -2148,10 +2376,21 @@ def serve(host: str = '127.0.0.1', port: int = 8000,
             'Install it with: pip install "obscuralens[web]"'
         ) from exc
 
-    app = create_app()
+    token = _web_token(api_token)
+    _ensure_secure_bind(host, token, allow_unauthenticated)
+    # With no bearer token, only accept loopback Host headers as a second
+    # line of defence against browser-based DNS-rebinding attacks.
+    allowed_hosts = (list(LOOPBACK_HOSTS)
+                     if not token and _is_loopback_host(host) else None)
+    app = create_app(api_token=token, allowed_hosts=allowed_hosts)
     url = f'http://{host}:{port}'
     print(f'ObscuraLens web UI: {url}')
     print('OpenAPI docs:        {}/docs'.format(url))
+    if token:
+        print(f'Authentication:      Bearer token ({WEB_TOKEN_ENV})')
+    elif not _is_loopback_host(host):
+        print('WARNING: authentication disabled by explicit override; '
+              'use an authenticating reverse proxy and TLS.')
     if open_browser:
         import threading
         import webbrowser

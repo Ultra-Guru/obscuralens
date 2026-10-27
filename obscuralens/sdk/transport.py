@@ -44,8 +44,8 @@ SDK_VERSION = '5.1.0'
 SDK_USER_AGENT = f'obscuralens-sdk/{SDK_VERSION}'
 
 #: Header name for the optional session API key (see the client's
-#: ``api_key`` parameter; the server honours ``OBSCURALENS_API_KEY``-style
-#: gating when deployed behind an authenticating proxy).
+#: ``api_key`` parameter). The native server accepts its
+#: ``OBSCURALENS_WEB_TOKEN`` value here, as can an authenticating proxy.
 API_KEY_HEADER = 'X-API-Key'
 
 

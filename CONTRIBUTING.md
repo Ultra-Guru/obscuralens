@@ -93,7 +93,9 @@ ruff check .                    # must be silent
 ```
 
 If you touched `sdk-js/`: `bunx --bun tsc -p sdk-js/tsconfig.json` and
-`node --test sdk-js/test/*.test.mjs` from `sdk-js/`.
+`node --test sdk-js/test/*.test.mjs` from `sdk-js/`. Browser client changes
+also run `node --test tests/js/web-*.test.mjs` (Node 18+, offline, no npm
+dependencies).
 
 **What CI runs** (`.github/workflows/ci.yml`) — push to `main` or
 `feature/**` branches and every PR. (Note: the current workflow file

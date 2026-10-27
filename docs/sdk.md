@@ -111,7 +111,7 @@ results = await client.gather([
 | Argument | Default | Meaning |
 |---|---|---|
 | `base_url` | `"http://127.0.0.1:8000"` | scheme + host + port (with or without trailing slash); path prefixes preserved |
-| `api_key` | `None` | sent as an `X-API-Key` header on every request. The stock server has no built-in auth; this is for authenticating reverse proxies in front of it |
+| `api_key` | `None` | sent as an `X-API-Key` header on every request. Set it to `OBSCURALENS_WEB_TOKEN` for native server authentication; authenticating reverse proxies can use the same contract |
 | `timeout` | `30.0` | per-request timeout in seconds |
 | `retries` | `3` | **total attempts per request including the first** (3 = one try plus up to two retries) |
 | `backoff` | `0.5` | base sleep between retries; the delay is `backoff * 2**attempt` capped at `max_backoff` |

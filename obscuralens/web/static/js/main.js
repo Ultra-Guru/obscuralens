@@ -19,7 +19,10 @@
  * Missing modules degrade to a placeholder so the shell always boots.
  */
 
-import { api, KINDS, KIND_META, ApiError } from './api.js';
+import {
+  api, KINDS, KIND_META, ApiError,
+  clearApiToken, hasApiToken, setApiToken,
+} from './api.js';
 import { ui } from './ui.js';
 
 const { el, icon, toast, toastErr } = ui;
@@ -90,6 +93,7 @@ let activeViewId = null;
 let renderToken = 0;
 
 async function route() {
+  if (authGateOpen) return;
   const { view: id, params } = parseHash();
   const view = getView(id);
   activeViewId = id;
@@ -193,6 +197,7 @@ function initTheme() {
 let statusTimer = null;
 
 async function pollStatus() {
+  if (authGateOpen) return;
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
   try {
@@ -483,24 +488,134 @@ export function refresh() {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Authentication gate                                                     */
+/* ---------------------------------------------------------------------- */
+
+let authGateOpen = false;
+
+/** Render a session-only bearer-token login without embedding it in a URL. */
+function renderAuthGate(message = '') {
+  if (authGateOpen) return;
+  authGateOpen = true;
+  const root = document.getElementById('view');
+  const status = document.getElementById('status-text');
+  if (status) status.textContent = 'authentication required';
+
+  const error = el('p', { class: 'auth-error', role: 'alert' }, [message]);
+  const input = el('input', {
+    id: 'api-token', class: 'input', type: 'password', required: true,
+    autocomplete: 'current-password', spellcheck: false,
+    placeholder: 'Paste OBSCURALENS_WEB_TOKEN',
+    'aria-label': 'ObscuraLens API token',
+  });
+  const button = el('button', { class: 'btn btn-primary', type: 'submit' }, [
+    'Unlock workspace',
+  ]);
+  const form = el('form', { class: 'auth-form' }, [
+    el('label', { for: 'api-token', class: 'field-label' }, ['API token']),
+    input,
+    error,
+    button,
+  ]);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const value = input.value.trim();
+    if (!value) {
+      error.textContent = 'Enter the token printed/configured on the server.';
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Checking…';
+    error.textContent = '';
+    setApiToken(value);
+    try {
+      await api.authCheck();
+    } catch (err) {
+      clearApiToken();
+      error.textContent = err instanceof ApiError && err.status === 401
+        ? 'Token rejected. Check OBSCURALENS_WEB_TOKEN and try again.'
+        : `Could not validate the token: ${err?.message ?? err}`;
+      button.disabled = false;
+      button.textContent = 'Unlock workspace';
+      input.select();
+      return;
+    }
+    authGateOpen = false;
+    input.value = '';
+    // First-login and post-expiry login share the normal boot continuation.
+    // A view-loading problem must not clear the already validated credential.
+    try {
+      await startWorkspace();
+    } catch (err) {
+      toastErr(`Workspace failed to load: ${err?.message ?? err}`);
+    }
+  });
+
+  root?.replaceChildren(el('section', { class: 'auth-gate card' }, [
+    el('div', { class: 'auth-mark' }, [icon('lock', { size: 28 })]),
+    el('h2', {}, ['Protected workspace']),
+    el('p', { class: 'muted' }, [
+      'This server requires Bearer authentication. The token is kept only ',
+      'in this tab’s session storage and is never appended to request URLs.',
+    ]),
+    form,
+  ]));
+  input.focus();
+}
+
+/** Allow public health checks, then validate a remembered tab credential. */
+async function ensureAuthentication() {
+  let health;
+  try {
+    health = await api.health();
+  } catch {
+    return; // the normal offline indicator handles an unavailable server
+  }
+  if (!health?.authentication_required) return;
+  if (hasApiToken()) {
+    try {
+      await api.authCheck();
+      return;
+    } catch {
+      clearApiToken();
+    }
+  }
+  renderAuthGate();
+}
+
+/* ---------------------------------------------------------------------- */
 /* Boot                                                                    */
 /* ---------------------------------------------------------------------- */
+
+let bootComplete = false;
+
+/** Load the workspace once, then resume routing after initial/later login. */
+async function startWorkspace() {
+  if (!bootComplete) {
+    await loadViews();
+    buildNav();
+    if (!location.hash) history.replaceState(null, '', '#/dashboard');
+    bootComplete = true;
+  }
+  await route();
+  if (statusTimer === null) startStatusPolling();
+  else pollStatus();
+}
 
 async function boot() {
   initTheme();
   initPalette();
   initShortcuts();
 
+  window.addEventListener('obscuralens:auth-required', (event) => {
+    clearApiToken();
+    renderAuthGate(event.detail?.message || 'Authentication is required.');
+  });
   window.addEventListener('hashchange', route);
 
-  await loadViews();
-  buildNav();
-
-  if (!location.hash) {
-    history.replaceState(null, '', '#/dashboard');
-  }
-  await route();
-  startStatusPolling();
+  await ensureAuthentication();
+  if (authGateOpen) return; // successful login calls startWorkspace()
+  await startWorkspace();
 }
 
 boot().catch((err) => {

@@ -7,6 +7,35 @@
 Five independent fixes, each reproduced before the change and covered by tests
 after it. Test count 4,586 → 5,044 (+458).
 
+### Security — authenticated web deployments & browser hardening
+
+- **Bearer authentication for the web/API.** Setting
+  `OBSCURALENS_WEB_TOKEN` protects every `/api/*` route except the public
+  health probe with constant-time credential checks. Swagger gains
+  Authorize controls; the existing Python/TypeScript SDK `X-API-Key`
+  transports work with the same token. The SPA validates the token before
+  loading views and stores it only in tab-scoped `sessionStorage`, never in
+  request URLs.
+- **Network binds fail closed.** `serve` and the desktop launcher refuse a
+  non-loopback bind without a token. `--allow-unauthenticated` is an
+  explicit reverse-proxy-only escape hatch. Tokenless loopback servers also
+  enforce a local Host-header allowlist to mitigate DNS rebinding.
+- **Authenticated SSE without token-bearing URLs.** Native `EventSource`
+  cannot send Authorization headers, so `POST /api/stream/ticket` now
+  issues bounded, 30-second, single-use tickets scoped only to the stream.
+  Reconnects renew them automatically and stale async connections cannot
+  reopen after close.
+- **Browser response hardening.** API responses are `Cache-Control:
+  no-store`; the SPA and API send CSP (SPA), `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and
+  `Cross-Origin-Resource-Policy` headers.
+- **Safe Compose default and current docs.** Docker publishes only
+  `127.0.0.1:8000` unless deliberately changed; API, web, desktop and
+  security guides now document authenticated remote deployment. The shell
+  and API docs again say 20 target kinds. Python and dependency-free Node
+  tests cover auth rejection/acceptance, ticket scope/expiry/replay,
+  security headers, Host filtering, bind safety and browser behaviour.
+
 ### Fixed — CI was red on `main`
 
 - **Charts no longer raise on unusable input.** matplotlib 3.11.0 (PR #30019)

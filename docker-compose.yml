@@ -3,13 +3,25 @@ services:
     build: .
     image: obscuralens:local
     ports:
-      - "8000:8000"
+      # Safe zero-configuration default: reachable only from the Docker host.
+      # For LAN/remote use set OBSCURALENS_WEB_TOKEN below, publish the port
+      # deliberately, terminate TLS at a proxy, and remove the CLI override.
+      - "127.0.0.1:8000:8000"
     volumes:
       - obscuralens-data:/data
     environment:
       OBSCURALENS_SQLITE_PATH: /data/obscuralens.db
       OBSCURALENS_CACHE_PATH: /data/http_cache.db
-    command: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+      # OBSCURALENS_WEB_TOKEN: "replace-with-a-long-random-token"
+    command:
+      - "serve"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      # Required because the container binds all interfaces internally;
+      # the loopback-only host port above is the actual access boundary.
+      - "--allow-unauthenticated"
 
   # One-off CLI use:  docker compose run --rm obscuralens ip 8.8.8.8
 volumes:

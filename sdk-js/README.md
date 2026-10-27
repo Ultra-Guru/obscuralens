@@ -61,7 +61,7 @@ import {
 
 const client = new ObscuraLensClient({
   baseUrl: "http://127.0.0.1:8000",
-  apiKey: process.env.OBSCURALENS_API_KEY, // optional X-API-Key (proxies)
+  apiKey: process.env.OBSCURALENS_WEB_TOKEN, // optional native auth / proxy key
   retries: 3,                               // attempts incl. the first
   timeoutMs: 30_000,
 });
@@ -112,7 +112,7 @@ const ip = await client.ip("8.8.8.8");
 | Option        | Default                  | Meaning                                                       |
 | ------------- | ------------------------ | ------------------------------------------------------------- |
 | `baseUrl`     | `http://127.0.0.1:8000` | Server root; trailing slashes trimmed, path prefixes kept. An invalid value throws a `TypeError` synchronously. |
-| `apiKey`      | `null`                   | Sent as `X-API-Key` on every request (honoured by authenticating proxies; the stock server ignores it). |
+| `apiKey`      | `null`                   | Sent as `X-API-Key` on every request; use `OBSCURALENS_WEB_TOKEN` for native auth or a proxy-specific key. |
 | `timeoutMs`   | `30_000`                 | Per-request timeout via `AbortSignal.timeout` (`null` disables). |
 | `retries`     | `3`                      | Total attempts per request *including the first*.             |
 | `backoffMs`   | `500`                    | Retry backoff base — the delay is `backoffMs * 2 ** attempt`. |
