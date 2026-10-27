@@ -8,7 +8,7 @@ import json
 import os
 import re
 import sys
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .config import SERVICES, config
 from .core.cache import cache
@@ -70,11 +70,13 @@ from .utils.formatting import (
 from .utils.formatting import (
     rows_from_fields as _rows_from_fields,
 )
-from .visualization import ChartGenerator
 from .watchlist import watchlist
 
 # Field rendering helpers (LABELS, _label, _fmt_value, _rows_from_fields)
 # are imported from obscuralens.utils.formatting above.
+
+if TYPE_CHECKING:  # pragma: no cover - import-time type hint only
+    from .visualization import ChartGenerator
 
 
 class ObscuraLensCLI:
@@ -86,8 +88,27 @@ class ObscuraLensCLI:
         self.username_tracker = UsernameTracker()
         self.email_tracker = EmailTracker()
         self.domain_tracker = DomainTracker()
-        self.chart_gen = ChartGenerator()
         self.report_gen = ReportGenerator()
+
+        # Charting is loaded on first use: matplotlib (and the rest of the
+        # visualization stack) is only needed when a chart is actually
+        # rendered, so every non-charting command - lookups, reports,
+        # automation - works without it.
+        self._chart_gen: Optional["ChartGenerator"] = None
+
+    @property
+    def chart_gen(self) -> Optional["ChartGenerator"]:
+        """Lazily created chart generator, or ``None`` without matplotlib."""
+        if self._chart_gen is None:
+            try:
+                from .visualization import ChartGenerator
+            except ImportError:
+                print_warning(
+                    "Charting is unavailable: the matplotlib visualization "
+                    "stack is not installed (pip install matplotlib).")
+                return None
+            self._chart_gen = ChartGenerator()
+        return self._chart_gen
 
     # ------------------------------------------------------------------
     # Main loop
@@ -298,6 +319,8 @@ class ObscuraLensCLI:
                 coords = result['info'].get('coordinates_by_source') or []
                 if not coords:
                     print_warning("No per-source coordinates available.")
+                elif self.chart_gen is None:
+                    print_warning("Chart skipped: visualization unavailable.")
                 else:
                     path = self.chart_gen.create_bar_chart(
                         {c['source']: abs(float(c['lat'])) for c in coords},
@@ -818,6 +841,9 @@ class ObscuraLensCLI:
         if not counts:
             print_warning("No country data to plot.")
             return
+        if self.chart_gen is None:
+            print_warning("Chart skipped: visualization unavailable.")
+            return
         path = self.chart_gen.create_pie_chart(
             counts, "Targets by country", "batch_countries.png")
         print_success(f"Chart saved: {path}")
@@ -937,8 +963,11 @@ class ObscuraLensCLI:
             print_table([[k, v] for k, v in stats['queries_by_type'].items()],
                         headers=['Type', 'Count'])
             if confirm_action("\nGenerate dashboard chart?"):
-                path = self.chart_gen.create_statistics_dashboard(stats)
-                print_success(f"Dashboard saved: {path}")
+                if self.chart_gen is None:
+                    print_warning("Chart skipped: visualization unavailable.")
+                else:
+                    path = self.chart_gen.create_statistics_dashboard(stats)
+                    print_success(f"Dashboard saved: {path}")
 
         cache_stats = cache.stats()
         print_subsection("Response Cache")

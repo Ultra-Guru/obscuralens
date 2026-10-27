@@ -4,11 +4,14 @@ All charts are rendered through matplotlib's non-interactive Agg backend into
 temporary directories; no test may open a window or touch the network.
 """
 
-import matplotlib
 import pytest
 
-from obscuralens.visualization import charts as charts_module
-from obscuralens.visualization.charts import ChartGenerator
+# Chart tests genuinely need the visualization stack; every other module
+# must keep working without it (see test_scheduled_check.py).
+matplotlib = pytest.importorskip('matplotlib')
+
+from obscuralens.visualization import charts as charts_module  # noqa: E402
+from obscuralens.visualization.charts import ChartGenerator  # noqa: E402
 
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
