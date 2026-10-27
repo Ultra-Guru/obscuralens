@@ -2,10 +2,10 @@
 
 ## Changelog
 
-## Unreleased — CI repair, report hardening & registry integrity
+## Unreleased — CI repair, report hardening, registry integrity & watchlist hygiene
 
-Five independent fixes, each reproduced before the change and covered by tests
-after it. Test count 4,586 → 5,044 (+458).
+Seven independent fixes, each reproduced before the change and covered by tests
+after it. Test count 4,586 → 5,064 (+478).
 
 ### Fixed — CI was red on `main`
 
@@ -115,6 +115,77 @@ after it. Test count 4,586 → 5,044 (+458).
   `test_plugins.py`) and `TestGravatarDigest` (5 → 14 in
   `test_email_sources.py`) pinning the three migrated digests - including
   negative assertions that they are no longer the old SHA-1 values.
+
+### Fixed — the scheduled watch run spammed its own issue tracker
+
+- **`watch.yml` opened an issue on any non-zero exit, not on changes.** The
+  check step runs with `continue-on-error: true`, so its exit code was the only
+  signal available - and any network hiccup, crashing tracker or volatile
+  field produced the same dated issue with the same "download the artifact"
+  body. Twenty-five of them (#21-#45) accumulated while every run stayed
+  green, which is the textbook alert-fatigue failure mode continuous-monitoring
+  guidance warns about: noise that analysts stop reading.
+- **`scripts/scheduled_check.py` now separates the two meanings of a bad run.**
+  Exit codes are 0 no changes / 1 changes / 2 usage error / 3 every lookup
+  failed. A single failing target is recorded in the report's `errors` list
+  and keeps its previous snapshot - it can no longer masquerade as a change,
+  and it can no longer silently lose state. When `GITHUB_OUTPUT` is set the
+  script also emits `changes`, `change_count`, `error_count`, `status` and
+  `summary` step outputs, plus a `done` flag written last of all so a crash
+  mid-run is distinguishable from a completed run.
+- **The workflow is now output-driven, not exit-code-driven.** Issues are
+  gated on `changes == 'true'`; a systematically broken check (status
+  `error`, or no `done` flag) turns the run red instead - visible in the
+  Actions tab and by email, never as a duplicate issue - and a couple of
+  flaky lookups only emit a workflow warning. A `concurrency` group
+  serializes cron and manual dispatch so one change cannot be reported twice.
+- **A real change now arrives as content, not as a pointer.** `--markdown`
+  renders the per-target diff (added / removed / changed, old and new values,
+  pipe-escaped for the table) as a ready-to-post issue body, so the alert is
+  reviewable without leaving the issue. Following GitHub's own
+  scheduled-issue tutorial pattern, the previous open `watchlist` issue is
+  closed before a new one is opened - at most one report open at a time -
+  and the label is created up front instead of falling back silently.
+- **`--ignore-keys` tunes noisy fields on both sides of the diff.** Filtering
+  only the fresh snapshot made an ignored key report as *removed* against the
+  stored one; both sides are now filtered, and the snapshot still records the
+  raw field for future runs.
+
+### Fixed — every repository URL pointed at a dead account
+
+The project moved off `AceGuru-mjh/*` (the account no longer resolves) to
+`Ultra-Guru/obscuralens`, but 30 references kept the old slug: the desktop
+updater's `DEFAULT_REPO` and `branding.HOMEPAGE`, the `update check` URLs
+inside `launcher.py`, the crates.io contact `User-Agent`, `pyproject.toml`'s
+Homepage/Repository, the README download badge and clone commands, the
+contributing/setup guides, the desktop-beta and SDK docs, the release notes'
+download links, the `sdk-js` package manifest, all three plugin examples and
+the desktop test suite. They worked only via GitHub's rename redirect - which
+returns the API's `/repositories/<id>` form, is documented as best-effort and
+breaks for any URL built from the slug. All now use the canonical location.
+
+### Fixed — the CLI hard-required matplotlib
+
+`cli.py` imported `ChartGenerator` at module import and built one in
+`__init__`, so a missing visualization stack broke *every* command - lookups,
+reports and automation included - and, in a partial environment, test
+collection itself. The generator is now a lazy property: matplotlib is
+touched only when a chart is actually requested, the three interactive chart
+paths degrade with a one-line warning instead of a traceback, and
+`tests/test_scheduled_check.py::test_cli_imports_without_matplotlib` runs the
+import in a subprocess with matplotlib blocked so the regression cannot
+return.
+
+### Added — `tests/test_scheduled_check.py` (20 cases)
+
+The script GitHub Actions runs daily had no tests at all. The new suite pins
+its contract with fake trackers and real state files: every exit code (first
+run is not a change, single target failure is not a change, all-target
+failure is exit 3), every step output including the crash-only-omitted `done`
+flag, the Markdown body's added/removed/changed/error sections and its
+pipe escaping, `--ignore-keys` two-sided filtering, snapshot survival across
+invalid JSON, webhook-only-on-changes, and the CLI-without-matplotlib
+import regression.
 
 ## 6.2.0 — Quality, Benchmarks & Docs
 
