@@ -94,6 +94,20 @@ change and covered by tests after it. Test count 4,586 → 5,097 (+511).
   a known-good/known-bad account pair per platform, which `sources health`
   tracks from real traffic.
 
+### Fixed — reportlab 5.x silently broke PDF reports on Python 3.9
+
+- **`reportlab` is pinned `<5` on Python 3.9** (`pyproject.toml` +
+  `requirements.txt`, mirrored in `tests/test_packaging.py`). reportlab
+  5.1.0 declares `Requires-Python: >=3.9` but its `__init__.py`
+  hard-raises `ImportError` on anything below 3.10, so the 3.9 CI leg
+  suddenly lost PDF generation: `generate_pdf_report`'s ImportError
+  fallback returned "library not installed", failing
+  `test_reports::test_generate_files` and
+  `test_cli_console::test_offer_pdf_report_writes_file` with no code
+  change on `main` (dependency drift, first seen on run 40556472016).
+  Python ≥3.10 keeps the unconstrained range - reportlab 5.1.0 passes the
+  full suite there.
+
 ### Added — WhatsMyName dataset interop (`obscuralens wmn`)
 
 - **`obscuralens/trackers/wmn.py`** imports the community-curated
